@@ -40,13 +40,11 @@ struct Deposit {
 ///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
 ///  └────────┘          └──────┘          └─────────┘          └───────┘
 enum DepositState {
-    Unlocked, // 0x00 TODO: opt
-    Locked, // 0x01
-    Withdrawn, // 0x10
-    Slashed // 0x11
+    Unlocked, //  0b00
+    Locked, //    0b01
+    Withdrawn, // 0b10
+    Slashed //    0b11
 }
-
-uint8 constant _CanDeposit = 0x00;
 
 /// Deposit in unexpected state.
 error UnexpectedState(DepositState state);
@@ -89,7 +87,8 @@ contract Collateralization {
             _id = lastID;
         } else {
             DepositState _state = getDeposit(_id).state;
-            if ((_state != DepositState.Withdrawn) && (_state != DepositState.Slashed)) revert UnexpectedState(_state);
+            // bit twiddling to save 19 gas
+            if ((uint8(_state) & 2) == 0) revert UnexpectedState(_state);
         }
         deposits[_id] = Deposit({
             depositor: msg.sender,
