@@ -3,100 +3,156 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-/// @notice A `Deposit` describes a slashable, time-locked deposit of `value` tokens. A `Deposit`
-/// might not be funded upon creation, in which case the `depositor` is set to the zero address.
-/// Once a `Deposit` is funded (has a nonzero `depositor`), it will remain in the funded state until
-/// the deposit is removed via withdrawal or slashing. A `Deposit` may only be withdrawn when
-/// `block.timestamp >= expiration`. Withdrawal returns `value` tokens to the depositor. The
-/// `arbiter` has the authority to slash the `Deposit` before `expiration`, which also burns `value`
-/// tokens.
+/// A `Deposit` describes a slashable, time-locked deposit of `value` tokens. A `Deposit` must be `locked` to provide
+/// the following invariants:
+/// - A `Deposit` may only be withdrawn when `block.timestamp >= expiration`. Withdrawal returns `value` tokens to the
+///   depositor.
+/// - The `arbiter` has the authority to slash the `Deposit` before `expiration`, which also burns `value` tokens.
 struct Deposit {
+    address depositor;
+    address arbiter;
     uint256 value;
     uint128 expiration;
-    address arbiter;
-    address depositor;
+    DepositState state;
 }
 
-/// @notice This contract manages `Deposits` as described above.
+///  ┌────────┐          ┌──────┐          ┌─────────┐          ┌───────┐
+///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
+///  └───┬────┘          └──┬───┘          └────┬────┘          └───┬───┘
+///      │       lock       │                   │                   │
+///      │ ─────────────────>                   │                   │
+///      │                  │                   │                   │
+///      │                  │     withdraw      │                   │
+///      │                  │ ─────────────────>│                   │
+///      │                  │                   │                   │
+///      │               withdraw               │                   │
+///      │ ────────────────────────────────────>│                   │
+///      │                  │                   │                   │
+///      │                  │                 slash                 │
+///      │                  │ ─────────────────────────────────────>│
+///      │                  │                   │                   │
+///      │               deposit                │                   │
+///      │ <────────────────────────────────────│                   │
+///      │                  │                   │                   │
+///      │                  │      deposit      │                   │
+///      │ <────────────────────────────────────────────────────────│
+///  ┌───┴────┐          ┌──┴───┐          ┌────┴────┐          ┌───┴───┐
+///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
+///  └────────┘          └──────┘          └─────────┘          └───────┘
+enum DepositState {
+    Unlocked, // 0x00 TODO: opt
+    Locked, // 0x01
+    Withdrawn, // 0x10
+    Slashed // 0x11
+}
+
+uint8 constant _CanDeposit = 0x00;
+
+/// Deposit in unexpected state.
+error UnexpectedState(DepositState state);
+/// Deposit value is zero.
+error ZeroValue();
+/// Deposit expiration in unexpected state.
+error Expired(bool expired);
+/// Slash called by an address that isn't the deposit's arbiter.
+error NotArbiter();
+/// Deposit does not exist.
+error NotFound();
+
+/// This contract manages `Deposit`s as described above.
 contract Collateralization {
-    /// @notice Burnable ERC-20 token held by this contract.
+    /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public token;
-    /// @notice Mapping of deposit IDs to deposits.
+    /// Mapping of deposit IDs to deposits.
     mapping(uint128 => Deposit) public deposits;
-    /// @notice Counter for assigning new deposit IDs.
+    /// Counter for assigning new deposit IDs.
     uint128 public lastID;
 
     /// @param _token the burnable ERC-20 token held by this contract.
     constructor(ERC20Burnable _token) {
+        // TODO: use a constant
         token = _token;
     }
 
-    /// @notice Create a new deposit, returning its associated ID.
-    /// @param value Token value of the new deposit.
-    /// @param expiration Expiration timestamp of the new deposit, in seconds.
-    /// @param arbiter Arbiter of the new deposit.
-    /// @param _fund True if the sender intends to fund the new deposit, false otherwise.
+    /// Create a new deposit, returning its associated ID.
+    /// @param _id ID of the deposit ID to reuse. This should be set to zero to receive a new ID. IDs may only be reused
+    /// if the associated deposit is withdrawn or slashed.
+    /// @param _value Token value of the new deposit.
+    /// @param _expiration Expiration timestamp of the new deposit, in seconds.
+    /// @param _arbiter Arbiter of the new deposit.
     /// @return id Unique ID associated with the new deposit.
-    function prepare(uint256 value, uint128 expiration, address arbiter, bool _fund) public returns (uint128) {
-        require(value > 0, "value is zero");
-        require(block.timestamp < expiration, "deposit expired");
-        lastID += 1;
-        address depositor = _fund ? msg.sender : address(0);
-        deposits[lastID] = Deposit({value: value, expiration: expiration, arbiter: arbiter, depositor: depositor});
-        if (_fund) {
-            bool transferSuccess = token.transferFrom(msg.sender, address(this), value);
-            require(transferSuccess, "transfer failed");
+    function deposit(uint128 _id, uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
+        if (_value == 0) revert ZeroValue();
+        if (block.timestamp >= _expiration) revert Expired(true);
+        if (_id == 0) {
+            lastID += 1;
+            _id = lastID;
+        } else {
+            DepositState _state = getDeposit(_id).state;
+            if ((_state != DepositState.Withdrawn) && (_state != DepositState.Slashed)) revert UnexpectedState(_state);
         }
-        return lastID;
+        deposits[_id] = Deposit({
+            depositor: msg.sender,
+            arbiter: _arbiter,
+            value: _value,
+            expiration: _expiration,
+            state: DepositState.Unlocked
+        });
+        bool _transferSuccess = token.transferFrom(msg.sender, address(this), _value);
+        require(_transferSuccess, "transfer failed");
+        return _id;
     }
 
-    /// @notice Fund an existing deposit. The sender will be set as the depositor, granting them the
-    /// authority to withdraw upon expiration.
-    /// @param id ID of the associated deposit.
-    function fund(uint128 id) public {
-        Deposit memory deposit = deposits[id];
-        require(block.timestamp < deposit.expiration, "deposit expired");
-        require(deposit.depositor == address(0), "deposit funded");
-        deposits[id].depositor = msg.sender;
-        bool transferSuccess = token.transferFrom(msg.sender, address(this), deposit.value);
-        require(transferSuccess, "transfer failed");
+    /// Lock the deposit associated with the given ID. This makes the deposit slashable until the deposit
+    /// expiration.
+    /// @param _id ID of the associated deposit.
+    function lock(uint128 _id) public {
+        Deposit memory _deposit = getDeposit(_id);
+        if (_deposit.state != DepositState.Unlocked) revert UnexpectedState(_deposit.state);
+        if (block.timestamp >= _deposit.expiration) revert Expired(true);
+        deposits[_id].state = DepositState.Locked;
     }
 
-    /// @notice Remove an expired deposit and return its associated tokens to the depositor.
-    /// @param id ID of the associated deposit.
-    function withdraw(uint128 id) public {
-        Deposit memory deposit = deposits[id];
-        require(block.timestamp >= deposit.expiration, "deposit not expired");
-        require(deposit.depositor != address(0), "depositor is zero");
-        delete deposits[id];
-        bool _transferSuccess = token.transfer(deposit.depositor, deposit.value);
+    /// Unlock the deposit associated with the given ID and return its associated tokens to the depositor.
+    /// @param _id ID of the associated deposit.
+    function withdraw(uint128 _id) public {
+        Deposit memory _deposit = getDeposit(_id);
+        DepositState _state = deposits[_id].state;
+        if (_state == DepositState.Locked) {
+            if (block.timestamp < _deposit.expiration) revert Expired(false);
+        } else if (_state != DepositState.Unlocked) {
+            revert UnexpectedState(_state);
+        }
+        deposits[_id].state = DepositState.Withdrawn;
+        bool _transferSuccess = token.transfer(_deposit.depositor, _deposit.value);
         require(_transferSuccess, "transfer failed");
     }
 
-    /// @notice Remove a deposit prior to expiration and burn its associated tokens. This action can
-    /// only be performed by the arbiter of the deposit associated with the given ID.
-    /// @param id ID of the associated deposit.
-    function slash(uint128 id) public {
-        Deposit memory deposit = deposits[id];
-        require(msg.sender == deposit.arbiter, "sender not arbiter");
-        require(deposit.depositor != address(0), "deposit not funded");
-        require(block.timestamp < deposit.expiration, "deposit expired");
-        delete deposits[id];
-        token.burn(deposit.value);
+    /// Remove a deposit prior to expiration and burn its associated tokens. This action can only be performed by the
+    /// arbiter of the deposit associated with the given ID.
+    /// @param _id ID of the associated deposit.
+    function slash(uint128 _id) public {
+        Deposit memory _deposit = getDeposit(_id);
+        if (msg.sender != _deposit.arbiter) revert NotArbiter();
+        if (_deposit.state != DepositState.Locked) revert UnexpectedState(_deposit.state);
+        if (block.timestamp >= _deposit.expiration) revert Expired(true);
+        deposits[_id].state = DepositState.Slashed;
+        token.burn(_deposit.value);
     }
 
-    /// @notice Returns the deposit associated with the given ID.
-    /// @param id ID of the associated deposit.
-    function getDeposit(uint128 id) public view returns (Deposit memory) {
-        Deposit memory deposit = deposits[id];
-        require(deposit.value > 0, "deposit not found");
-        return deposit;
+    /// Return the deposit associated with the given ID.
+    /// @param _id ID of the associated deposit.
+    function getDeposit(uint128 _id) public view returns (Deposit memory) {
+        Deposit memory _deposit = deposits[_id];
+        if (_deposit.value == 0) revert NotFound();
+        return _deposit;
     }
 
-    /// @notice Returns true if the deposit associated with the given ID is slashable, false
-    /// otherwise. A slashable deposit is one that is funded and has not expired.
-    /// @param id ID of the associated deposit.
-    function isSlashable(uint128 id) public view returns (bool) {
-        return (deposits[id].depositor != address(0)) && (block.timestamp < deposits[id].expiration);
+    /// Return true if the deposit associated with the given ID is slashable, false otherwise. A slashable deposit is
+    /// locked and not expired.
+    /// @param _id ID of the associated deposit.
+    function isSlashable(uint128 _id) public view returns (bool) {
+        Deposit memory _deposit = getDeposit(_id);
+        return (_deposit.state == DepositState.Locked) && (block.timestamp < _deposit.expiration);
     }
 }
