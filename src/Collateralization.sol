@@ -113,6 +113,7 @@ contract Collateralization {
     /// @param _id ID of the associated deposit.
     function lock(uint128 _id) public {
         Deposit memory _deposit = getDeposit(_id);
+        if (msg.sender != _deposit.arbiter) revert NotArbiter();
         if (_deposit.state != DepositState.Unlocked) revert UnexpectedState(_deposit.state);
         if (block.timestamp >= _deposit.expiration) revert Expired(true);
         deposits[_id].state = DepositState.Locked;
