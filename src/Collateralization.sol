@@ -59,6 +59,11 @@ error NotFound();
 
 /// This contract manages `Deposit`s as described above.
 contract Collateralization {
+    event _Deposit(uint128 indexed id, address indexed arbiter, uint256 value, uint128 expiration);
+    event _Lock(uint128 indexed id);
+    event _Withdraw(uint128 indexed id);
+    event _Slash(uint128 indexed id);
+
     /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public token;
     /// Mapping of deposit IDs to deposits.
@@ -99,6 +104,7 @@ contract Collateralization {
         });
         bool _transferSuccess = token.transferFrom(msg.sender, address(this), _value);
         require(_transferSuccess, "transfer failed");
+        emit _Deposit(_id, _arbiter, _value, _expiration);
         return _id;
     }
 
@@ -110,6 +116,7 @@ contract Collateralization {
         if (_deposit.state != DepositState.Unlocked) revert UnexpectedState(_deposit.state);
         if (block.timestamp >= _deposit.expiration) revert Expired(true);
         deposits[_id].state = DepositState.Locked;
+        emit _Lock(_id);
     }
 
     /// Unlock the deposit associated with the given ID and return its associated tokens to the depositor.
@@ -125,6 +132,7 @@ contract Collateralization {
         deposits[_id].state = DepositState.Withdrawn;
         bool _transferSuccess = token.transfer(_deposit.depositor, _deposit.value);
         require(_transferSuccess, "transfer failed");
+        emit _Withdraw(_id);
     }
 
     /// Remove a deposit prior to expiration and burn its associated tokens. This action can only be performed by the
@@ -137,6 +145,7 @@ contract Collateralization {
         if (block.timestamp >= _deposit.expiration) revert Expired(true);
         deposits[_id].state = DepositState.Slashed;
         token.burn(_deposit.value);
+        emit _Slash(_id);
     }
 
     /// Return the deposit associated with the given ID.
