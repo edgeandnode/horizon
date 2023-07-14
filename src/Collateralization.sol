@@ -20,7 +20,7 @@ struct Deposit {
 ///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
 ///  └───┬────┘          └──┬───┘          └────┬────┘          └───┬───┘
 ///      │       lock       │                   │                   │
-///      │ ─────────────────>                   │                   │
+///      │ ────────────────>│                   │                   │
 ///      │                  │                   │                   │
 ///      │                  │     withdraw      │                   │
 ///      │                  │ ─────────────────>│                   │
@@ -30,12 +30,6 @@ struct Deposit {
 ///      │                  │                   │                   │
 ///      │                  │                 slash                 │
 ///      │                  │ ─────────────────────────────────────>│
-///      │                  │                   │                   │
-///      │               deposit                │                   │
-///      │ <────────────────────────────────────│                   │
-///      │                  │                   │                   │
-///      │                  │      deposit      │                   │
-///      │ <────────────────────────────────────────────────────────│
 ///  ┌───┴────┐          ┌──┴───┐          ┌────┴────┐          ┌───┴───┐
 ///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
 ///  └────────┘          └──────┘          └─────────┘          └───────┘
@@ -78,23 +72,15 @@ contract Collateralization {
     }
 
     /// Create a new deposit, returning its associated ID.
-    /// @param _id ID of the deposit ID to reuse. This should be set to zero to receive a new ID. IDs may only be reused
-    /// if the associated deposit is withdrawn or slashed.
     /// @param _value Token value of the new deposit.
     /// @param _expiration Expiration timestamp of the new deposit, in seconds.
     /// @param _arbiter Arbiter of the new deposit.
     /// @return id Unique ID associated with the new deposit.
-    function deposit(uint128 _id, uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
+    function deposit(uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
         if (_value == 0) revert ZeroValue();
         if (block.timestamp >= _expiration) revert Expired(true);
-        if (_id == 0) {
-            lastID += 1;
-            _id = lastID;
-        } else {
-            DepositState _state = getDeposit(_id).state;
-            // bit twiddling to save 19 gas
-            if ((uint8(_state) & 2) == 0) revert UnexpectedState(_state);
-        }
+        lastID += 1;
+        uint128 _id = lastID;
         deposits[_id] = Deposit({
             depositor: msg.sender,
             arbiter: _arbiter,
