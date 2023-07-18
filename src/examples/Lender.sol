@@ -3,16 +3,23 @@ pragma solidity ^0.8.13;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {SafeCast} from "openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
-import {AggregatedLoan, LoanAggregator, LoanCommitment} from "./LoanAggregator.sol";
+import {AggregatedLoan, ILender, LoanAggregator, LoanCommitment} from "./LoanAggregator.sol";
 
 struct Limits {
     uint256 maxValue;
     uint64 maxDuration;
 }
 
-contract Lender is Ownable {
+contract Lender is Ownable, ILender {
+    struct LoanState {
+        address borrower;
+        uint256 initialValue;
+        uint256 borrowerCollateral;
+    }
+
     LoanAggregator public agg;
     Limits public limits;
+    LoanState[] public loans;
 
     constructor(LoanAggregator _agg, Limits memory _limits) {
         agg = _agg;
@@ -35,14 +42,11 @@ contract Lender is Ownable {
         uint256 _transferAmount = _collateral + _payment;
         agg.collateralization().token().transferFrom(msg.sender, address(this), _transferAmount);
 
+        uint96 _loanIndex = uint96(loans.length);
+        loans.push(LoanState({borrower: msg.sender, initialValue: _value, borrowerCollateral: _collateral}));
         agg.collateralization().token().approve(address(agg), _value);
         return LoanCommitment({
-            loan: AggregatedLoan({
-                lender: address(this),
-                value: _value,
-                borrower: msg.sender,
-                borrowerCollateral: _collateral
-            }),
+            loan: AggregatedLoan({lender: this, lenderData: _loanIndex, value: _value}),
             signature: "siggy"
         });
     }
@@ -57,5 +61,14 @@ contract Lender is Ownable {
         // using standard Solidity math operations or those provided by OpenZeppelin. And using a
         // table would not be ideal, since storage space is more difficult to justify than compute.
         return 1;
+    }
+
+    function onCollateralWithraw(uint256 _value, uint96 _lenderData) public {
+        LoanState memory _loan = loans[_lenderData];
+        delete loans[_lenderData];
+        uint256 _loss = _loan.initialValue - _value;
+        if (_loss < _loan.borrowerCollateral) {
+            agg.collateralization().token().transfer(_loan.borrower, _loan.borrowerCollateral - _loss);
+        }
     }
 }

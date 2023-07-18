@@ -3,11 +3,12 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-/// A `Deposit` describes a slashable, time-locked deposit of `value` tokens. A `Deposit` must be `locked` to provide
-/// the following invariants:
-/// - A `Deposit` may only be withdrawn when `block.timestamp >= expiration`. Withdrawal returns `value` tokens to the
+/// A Deposit describes a slashable, time-locked deposit of `value` tokens. A Deposit must be in the locked `state` to
+/// provide the following invariants:
+/// - The `arbiter` has the authority to slash the Deposit before `expiration`, which burns a given amount tokens. A
+///   slash also reduces the tokens eventually available to withdraw by the same amount.
+/// - A Deposit may only be withdrawn when `block.timestamp >= expiration`. Withdrawal returns `value` tokens to the
 ///   depositor.
-/// - The `arbiter` has the authority to slash the `Deposit` before `expiration`, which also burns `value` tokens.
 struct Deposit {
     address depositor;
     address arbiter;
@@ -16,28 +17,31 @@ struct Deposit {
     DepositState state;
 }
 
-///  ┌────────┐          ┌──────┐          ┌─────────┐          ┌───────┐
-///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
-///  └───┬────┘          └──┬───┘          └────┬────┘          └───┬───┘
-///      │       lock       │                   │                   │
-///      │ ────────────────>│                   │                   │
-///      │                  │                   │                   │
-///      │                  │     withdraw      │                   │
-///      │                  │ ─────────────────>│                   │
-///      │                  │                   │                   │
-///      │               withdraw               │                   │
-///      │ ────────────────────────────────────>│                   │
-///      │                  │                   │                   │
-///      │                  │                 slash                 │
-///      │                  │ ─────────────────────────────────────>│
-///  ┌───┴────┐          ┌──┴───┐          ┌────┴────┐          ┌───┴───┐
-///  │Unlocked│          │Locked│          │Withdrawn│          │Slashed│
-///  └────────┘          └──────┘          └─────────┘          └───────┘
+///  ┌────────┐          ┌──────┐          ┌─────────┐
+///  │Unlocked│          │Locked│          │Withdrawn│
+///  └───┬────┘          └──┬───┘          └────┬────┘
+///      │       lock       │                   │
+///      │ ─────────────────>                   │
+///      │                  │                   │
+///      │                  │────┐              │
+///      │                  │    │ slash        │
+///      │                  │<───┘              │
+///      │                  │                   │
+///      │                  │     withdraw      │
+///      │                  │ ─────────────────>│
+///      │                  │                   │
+///      │               withdraw               │
+///      │ ────────────────────────────────────>│
+///      │                  │                   │
+///      │               deposit                │
+///      │ <────────────────────────────────────│
+///  ┌───┴────┐          ┌──┴───┐          ┌────┴────┐
+///  │Unlocked│          │Locked│          │Withdrawn│
+///  └────────┘          └──────┘          └─────────┘
 enum DepositState {
-    Unlocked, //  0b00
-    Locked, //    0b01
-    Withdrawn, // 0b10
-    Slashed //    0b11
+    Unlocked,
+    Locked,
+    Withdrawn
 }
 
 /// Deposit in unexpected state.
@@ -46,17 +50,21 @@ error UnexpectedState(DepositState state);
 error ZeroValue();
 /// Deposit expiration in unexpected state.
 error Expired(bool expired);
+/// Withdraw called by an address that isn't the depositor.
+error NotDepositor();
 /// Slash called by an address that isn't the deposit's arbiter.
 error NotArbiter();
 /// Deposit does not exist.
 error NotFound();
+/// Slash amount is larger than remainning deposit balance.
+error SlashAmountTooLarge();
 
-/// This contract manages `Deposit`s as described above.
+/// This contract manages Deposits as described above.
 contract Collateralization {
     event _Deposit(uint128 indexed id, address indexed arbiter, uint256 value, uint128 expiration);
     event _Lock(uint128 indexed id);
     event _Withdraw(uint128 indexed id);
-    event _Slash(uint128 indexed id);
+    event _Slash(uint128 indexed id, uint256 amount);
 
     /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public token;
@@ -77,6 +85,7 @@ contract Collateralization {
     /// @param _arbiter Arbiter of the new deposit.
     /// @return id Unique ID associated with the new deposit.
     function deposit(uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
+        // TODO: reuse state when given `(_id != 0) && (msg.sender == getDeposit(_id).depositor)`
         if (_value == 0) revert ZeroValue();
         if (block.timestamp >= _expiration) revert Expired(true);
         lastID += 1;
@@ -110,6 +119,7 @@ contract Collateralization {
     /// @param _id ID of the associated deposit.
     function withdraw(uint128 _id) public {
         Deposit memory _deposit = getDeposit(_id);
+        if (_deposit.depositor != msg.sender) revert NotDepositor();
         DepositState _state = deposits[_id].state;
         if (_state == DepositState.Locked) {
             if (block.timestamp < _deposit.expiration) revert Expired(false);
@@ -122,24 +132,26 @@ contract Collateralization {
         emit _Withdraw(_id);
     }
 
-    /// Remove a deposit prior to expiration and burn its associated tokens. This action can only be performed by the
-    /// arbiter of the deposit associated with the given ID.
+    /// Burn some amount of the deposit value prior to expiration. This action can only be performed by the arbiter of
+    /// the deposit associated with the given ID.
     /// @param _id ID of the associated deposit.
-    function slash(uint128 _id) public {
+    /// @param _amount Amount of remaining tokens to burn.
+    function slash(uint128 _id, uint256 _amount) public {
         Deposit memory _deposit = getDeposit(_id);
         if (msg.sender != _deposit.arbiter) revert NotArbiter();
         if (_deposit.state != DepositState.Locked) revert UnexpectedState(_deposit.state);
         if (block.timestamp >= _deposit.expiration) revert Expired(true);
-        deposits[_id].state = DepositState.Slashed;
-        token.burn(_deposit.value);
-        emit _Slash(_id);
+        if (_amount > _deposit.value) revert SlashAmountTooLarge();
+        deposits[_id].value -= _amount;
+        token.burn(_amount);
+        emit _Slash(_id, _amount);
     }
 
     /// Return the deposit associated with the given ID.
     /// @param _id ID of the associated deposit.
     function getDeposit(uint128 _id) public view returns (Deposit memory) {
         Deposit memory _deposit = deposits[_id];
-        if (_deposit.value == 0) revert NotFound();
+        if (_deposit.depositor == address(0)) revert NotFound();
         return _deposit;
     }
 
@@ -148,6 +160,7 @@ contract Collateralization {
     /// @param _id ID of the associated deposit.
     function isSlashable(uint128 _id) public view returns (bool) {
         Deposit memory _deposit = getDeposit(_id);
+        // TODO: also check if `_deposit.value > 0`?
         return (_deposit.state == DepositState.Locked) && (block.timestamp < _deposit.expiration);
     }
 }

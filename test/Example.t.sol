@@ -7,7 +7,9 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Collateralization, Deposit, DepositState, UnexpectedState} from "../src/Collateralization.sol";
 import {DataService} from "../src/examples/DataService.sol";
 import {Lender, Limits} from "../src/examples/Lender.sol";
-import {AggregatedLoan, IDataService, LoanAggregator, LoanCommitment} from "../src/examples/LoanAggregator.sol";
+import {
+    AggregatedLoan, IDataService, ILender, LoanAggregator, LoanCommitment
+} from "../src/examples/LoanAggregator.sol";
 
 contract TestToken is ERC20Burnable {
     constructor(uint256 _initialSupply) ERC20("MockCoin", "MOCK") {
@@ -15,81 +17,86 @@ contract TestToken is ERC20Burnable {
     }
 }
 
-contract CollateralizationUnitTests is Test {
+contract CollateralizationUnitTests is Test, ILender {
     TestToken public token;
     Collateralization public collateralization;
+    DataService public dataService;
+    LoanAggregator public aggregator;
+    Lender public lender;
 
     function setUp() public {
         token = new TestToken(1_000);
         collateralization = new Collateralization(token);
+        aggregator = new LoanAggregator(collateralization);
+        dataService = new DataService(collateralization, 20 days);
+        lender = new Lender(aggregator, Limits({maxValue: 100, maxDuration: 30 days}));
+        token.transfer(address(lender), 80);
     }
 
-    function test_Example() public {
-        DataService _dataService = new DataService(collateralization, 20 days);
-        LoanAggregator _agg = new LoanAggregator(collateralization);
-        Lender _lender = new Lender(_agg, Limits({maxValue: 100, maxDuration: 30 days}));
-        token.transfer(address(_lender), 80);
+    function onCollateralWithraw(uint256 _value, uint96 _lenderData) public {}
 
-        token.approve(address(_dataService), 10);
-        _dataService.addProvider(address(this), 10);
+    function test_Example() public {
+        // Add this contract as a data service provider to receive 10 tokens in payment.
+        token.approve(address(dataService), 10);
+        dataService.addProvider(address(this), 10);
 
         uint256 _initialBalance = token.balanceOf(address(this));
-        uint256 _initialLenderBalance = token.balanceOf(address(_lender));
+        uint256 _initialLenderBalance = token.balanceOf(address(lender));
 
+        // Data service requires 10x of payment (100 tokens) in collateralization deposit. Fund deposit with a 20 token
+        // loan from self, and a 80 token loan from lender.
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
-        token.approve(address(_agg), 20);
-        _loanCommitments[0] = LoanCommitment({
-            loan: AggregatedLoan({lender: address(this), value: 20, borrower: address(this), borrowerCollateral: 0}),
-            signature: "siggy"
-        });
-        token.approve(address(_lender), 6);
-        _loanCommitments[1] = _lender.borrow(80, 5, 1, _dataService.disputePeriod());
-
-        uint128 _expiration = uint128(block.timestamp) + _dataService.disputePeriod();
-        uint128 _deposit = _agg.remitPayment(DataService(_dataService), _expiration, _loanCommitments);
+        token.approve(address(aggregator), 20);
+        _loanCommitments[0] =
+            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, value: 20}), signature: "siggy"});
+        // Send lender 5 tokens in collateral and 1 token in payment (6 total) for a 80 token loan.
+        token.approve(address(lender), 6);
+        _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());
+        // Receive 10 token payment and start dispute period.
+        uint128 _expiration = uint128(block.timestamp) + dataService.disputePeriod();
+        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _expiration, _loanCommitments);
 
         assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 26);
-        assertEq(token.balanceOf(address(_lender)), _initialLenderBalance - 80 + 6);
+        assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 6 - 80);
 
-        vm.warp(block.number + _dataService.disputePeriod());
-        _agg.withdraw(_deposit);
-
+        // Withdraw deposit at end of dispute period.
+        vm.warp(block.number + dataService.disputePeriod());
+        aggregator.withdraw(_deposit);
         assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 1);
-        assertEq(token.balanceOf(address(_lender)), _initialLenderBalance + 1);
+        assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 1);
     }
 
     function test_ExampleSlash() public {
-        DataService _dataService = new DataService(collateralization, 20 days);
-        LoanAggregator _agg = new LoanAggregator(collateralization);
-        Lender _lender = new Lender(_agg, Limits({maxValue: 100, maxDuration: 30 days}));
-        token.transfer(address(_lender), 80);
-
-        token.approve(address(_dataService), 10);
-        _dataService.addProvider(address(this), 10);
+        // Add this contract as a data service provider to receive 10 tokens in payment.
+        token.approve(address(dataService), 10);
+        dataService.addProvider(address(this), 10);
 
         uint256 _initialBalance = token.balanceOf(address(this));
-        uint256 _initialLenderBalance = token.balanceOf(address(_lender));
+        uint256 _initialLenderBalance = token.balanceOf(address(lender));
 
+        // Data service requires 10x of payment (100 tokens) in collateralization deposit. Fund deposit with a 20 token
+        // loan from self, and a 80 token loan from lender.
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
-        token.approve(address(_agg), 20);
-        _loanCommitments[0] = LoanCommitment({
-            loan: AggregatedLoan({lender: address(this), value: 20, borrower: address(this), borrowerCollateral: 0}),
-            signature: "siggy"
-        });
-        token.approve(address(_lender), 6);
-        _loanCommitments[1] = _lender.borrow(80, 5, 1, _dataService.disputePeriod());
-
-        uint128 _expiration = uint128(block.timestamp) + _dataService.disputePeriod();
-        uint128 _deposit = _agg.remitPayment(DataService(_dataService), _expiration, _loanCommitments);
+        token.approve(address(aggregator), 20);
+        _loanCommitments[0] =
+            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, value: 20}), signature: "siggy"});
+        // Send lender 5 tokens in collateral and 1 token in payment (6 total) for a 80 token loan.
+        token.approve(address(lender), 6);
+        _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());
+        // Receive 10 token payment and start dispute period.
+        uint128 _expiration = uint128(block.timestamp) + dataService.disputePeriod();
+        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _expiration, _loanCommitments);
 
         assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 26);
-        assertEq(token.balanceOf(address(_lender)), _initialLenderBalance - 80 + 6);
+        assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 6 - 80);
 
-        vm.warp(block.number + _dataService.disputePeriod() - 1);
-        _dataService.slash(address(this));
-
-        vm.warp(block.number + _dataService.disputePeriod());
-        vm.expectRevert(abi.encodeWithSelector(UnexpectedState.selector, DepositState.Slashed));
-        _agg.withdraw(_deposit);
+        // Warp to one block before disoute period end, and slash 80 tokens (80%) of deposit.
+        vm.warp(block.number + dataService.disputePeriod() - 1);
+        dataService.slash(address(this), 80);
+        // Warp to end of dispute period, and withdraw remaining tokens.
+        vm.warp(block.number + dataService.disputePeriod());
+        aggregator.withdraw(_deposit);
+        assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 22);
+        assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 6 - 64);
     }
 }

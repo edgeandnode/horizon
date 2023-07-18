@@ -62,10 +62,10 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         _removeDepositID(_id);
     }
 
-    function slash(uint256 __sender, uint256 __id) public {
+    function slash(uint256 __sender, uint256 __id, uint256 __amount) public {
         uint128 _id = _genID(__id);
         vm.prank(_genActor(__sender));
-        collateralization.slash(_id);
+        collateralization.slash(_id, bound(__amount, 0, collateralization.getDeposit(_id).value));
         assert(collateralization.isSlashable(_id));
         _removeDepositID(_id);
     }
@@ -241,7 +241,17 @@ contract CollateralizationUnitTests is Test {
         assertEq(token.balanceOf(address(collateralization)), 0);
     }
 
-    function test_WithdrawFromNonDepositor() public {
+    function testFail_WithdrawTwice() public {
+        uint128 _expiration = uint128(block.timestamp) + 1;
+        token.approve(address(collateralization), 2);
+        uint128 _id = collateralization.deposit(2, _expiration, address(this));
+        collateralization.lock(_id);
+        vm.warp(_expiration);
+        collateralization.withdraw(_id);
+        collateralization.withdraw(_id);
+    }
+
+    function testFail_WithdrawFromNonDepositor() public {
         uint128 _expiration = uint128(block.timestamp) + 1;
         uint256 _initialBalance = token.balanceOf(address(this));
         address _other = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
@@ -263,10 +273,10 @@ contract CollateralizationUnitTests is Test {
         vm.startPrank(_arbiter);
         collateralization.lock(_id);
         vm.warp(_expiration - 1);
-        collateralization.slash(_id);
+        collateralization.slash(_id, 1);
         vm.stopPrank();
         assertEq(token.totalSupply(), _initialSupply - 1);
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Slashed));
+        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Locked));
     }
 
     function testFail_SlashAtExpiration() public {
@@ -275,7 +285,7 @@ contract CollateralizationUnitTests is Test {
         uint128 _id = collateralization.deposit(1, _expiration, address(this));
         collateralization.lock(_id);
         vm.warp(_expiration);
-        collateralization.slash(_id);
+        collateralization.slash(_id, 1);
     }
 
     function testFail_SlashAfterExpiration() public {
@@ -284,7 +294,7 @@ contract CollateralizationUnitTests is Test {
         uint128 _id = collateralization.deposit(1, _expiration, address(this));
         collateralization.lock(_id);
         vm.warp(_expiration + 1);
-        collateralization.slash(_id);
+        collateralization.slash(_id, 1);
     }
 
     function testFail_SlashUnlocked() public {
@@ -292,7 +302,7 @@ contract CollateralizationUnitTests is Test {
         token.approve(address(collateralization), 1);
         uint128 _id = collateralization.deposit(1, _expiration, address(this));
         vm.warp(_expiration + 1);
-        collateralization.slash(_id);
+        collateralization.slash(_id, 1);
     }
 
     function testFail_SlashFromNonArbiter() public {
@@ -301,6 +311,6 @@ contract CollateralizationUnitTests is Test {
         token.approve(address(collateralization), 1);
         uint128 _id = collateralization.deposit(1, _expiration, _arbiter);
         vm.warp(_expiration - 1);
-        collateralization.slash(_id);
+        collateralization.slash(_id, 1);
     }
 }

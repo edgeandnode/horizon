@@ -34,11 +34,10 @@ contract DataService is Ownable, IDataService {
         delete providers[_provider];
     }
 
-    /// Remove the provider and slash their deposit.
-    function slash(address _provider) public onlyOwner {
+    /// Slash the provider's deposit.
+    function slash(address _provider, uint256 _amount) public onlyOwner {
         ProviderState memory _state = getProviderState(_provider);
-        delete providers[_provider];
-        collateralization.slash(_state.deposit);
+        collateralization.slash(_state.deposit, _amount);
     }
 
     /// Called by data service provider to receive payment. This locks the given deposit to begin a dispute period.
