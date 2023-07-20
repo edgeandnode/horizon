@@ -46,7 +46,7 @@ contract LoanAggregator {
             _index += 1;
         }
         collateralization.token().approve(address(collateralization), _value);
-        uint128 _deposit = collateralization.deposit(_value, _expiration, address(_arbiter));
+        uint128 _deposit = collateralization.deposit(0, _value, _expiration, address(_arbiter));
         _index = 0;
         while (_index < _loanCommitments.length) {
             loans[_deposit].push(_loanCommitments[_index].loan);

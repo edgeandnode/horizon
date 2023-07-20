@@ -80,16 +80,23 @@ contract Collateralization {
     }
 
     /// Create a new deposit, returning its associated ID.
+    /// @param _id _id ID of the deposit ID to reuse. This should be set to zero to receive a new ID. IDs may only be
+    /// reused by its prior depositor when the deposit is withdrawn.
     /// @param _value Token value of the new deposit.
     /// @param _expiration Expiration timestamp of the new deposit, in seconds.
     /// @param _arbiter Arbiter of the new deposit.
-    /// @return id Unique ID associated with the new deposit.
-    function deposit(uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
-        // TODO: reuse state when given `(_id != 0) && (msg.sender == getDeposit(_id).depositor)`
+    /// @return id ID associated with the new deposit.
+    function deposit(uint128 _id, uint256 _value, uint128 _expiration, address _arbiter) public returns (uint128) {
         if (_value == 0) revert ZeroValue();
-        if (block.timestamp >= _expiration) revert Expired(true);
-        lastID += 1;
-        uint128 _id = lastID;
+        if (_id == 0) {
+            if (block.timestamp >= _expiration) revert Expired(true);
+            lastID += 1;
+            _id = lastID;
+        } else {
+            Deposit memory _deposit = getDeposit(_id);
+            if (msg.sender != _deposit.depositor) revert NotDepositor();
+            if (_deposit.state != DepositState.Withdrawn) revert UnexpectedState(_deposit.state);
+        }
         deposits[_id] = Deposit({
             depositor: msg.sender,
             arbiter: _arbiter,
