@@ -6,7 +6,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC20Burnable} from "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Collateralization, Deposit, DepositState, UnexpectedState} from "../src/Collateralization.sol";
+import {Collateralization, DepositState} from "../src/Collateralization.sol";
 
 contract TestToken is ERC20Burnable {
     constructor(uint256 _initialSupply) ERC20("MockCoin", "MOCK") {
@@ -36,23 +36,20 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         vm.warp(block.timestamp + bound(blocks, 1, 10));
     }
 
-    function deposit(uint256 __sender, uint256 __value, uint256 __expiration, uint256 __arbiter)
-        public
-        returns (uint128)
-    {
+    function deposit(uint256 __sender, uint256 __arbiter, uint256 __value, uint256 __unlock) public returns (uint128) {
         address _depositor = _genActor(__sender);
         uint256 _value = bound(__value, 1, collateralization.token().balanceOf(_depositor));
         vm.startPrank(_depositor);
         collateralization.token().approve(address(collateralization), _value);
-        uint128 _id = collateralization.deposit(0, _value, _genExpiration(__expiration), _genActor(__arbiter));
+        uint128 _id = collateralization.deposit(_genActor(__arbiter), _value, _genTimestamp(__unlock));
         vm.stopPrank();
         depositIDs.push(_id);
         return _id;
     }
 
-    function lock(uint256 __sender, uint256 __id) public {
+    function lock(uint256 __sender, uint256 __id, uint256 __unlock) public {
         vm.prank(_genActor(__sender));
-        collateralization.lock(_genID(__id));
+        collateralization.lock(_genID(__id), _genTimestamp(__unlock));
     }
 
     function withdraw(uint256 __sender, uint256 __id) public {
@@ -75,7 +72,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         uint64 _index = 0;
         while (_index < depositIDs.length) {
             uint128 _id = depositIDs[_index];
-            Deposit memory _deposit = collateralization.getDeposit(_id);
+            DepositState memory _deposit = collateralization.getDeposit(_id);
             if (_deposit.depositor != address(0)) {
                 total += _deposit.value;
             }
@@ -104,8 +101,8 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         return actors[bound(_seed, 0, actors.length - 1)];
     }
 
-    function _genExpiration(uint256 _seed) internal view returns (uint128) {
-        return uint128(bound(_seed, 1, 20));
+    function _genTimestamp(uint256 _seed) internal view returns (uint64) {
+        return uint64(bound(_seed, 1, 20));
     }
 }
 
@@ -133,195 +130,173 @@ contract CollateralizationUnitTests is Test {
         collateralization = new Collateralization(token);
     }
 
-    function test_Deposit() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+    function test_UnlockedDeposit() public {
         uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(0));
+        uint128 _id = collateralization.deposit(address(0), 1, 0);
         assertEq(token.balanceOf(address(this)), _initialBalance - 1);
         assertEq(token.balanceOf(address(collateralization)), 1);
         assertEq(collateralization.getDeposit(_id).depositor, address(this));
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Unlocked));
         assertEq(collateralization.isSlashable(_id), false);
     }
 
-    function test_DepositUniqueID() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
-        token.approve(address(collateralization), 2);
-        uint128 _id1 = collateralization.deposit(0, 1, _expiration, address(0));
-        uint128 _id2 = collateralization.deposit(0, 1, _expiration, address(0));
-        assertNotEq(_id1, _id2);
-    }
-
-    function test_DepositReusedID() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
-        token.approve(address(collateralization), 2);
-        uint128 _id1 = collateralization.deposit(0, 1, _expiration, address(0));
-        vm.expectRevert(abi.encodeWithSelector(UnexpectedState.selector, DepositState.Unlocked));
-        collateralization.deposit(_id1, 1, _expiration, address(0));
-        collateralization.withdraw(_id1);
-        uint128 _id2 = collateralization.deposit(_id1, 1, _expiration, address(0));
-        assertEq(_id1, _id2);
-    }
-
-    function testFail_DepositExpirationAtBlock() public {
-        uint128 _expiration = uint128(block.timestamp);
+    function test_LockedDeposit() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
+        uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
-        collateralization.deposit(0, 1, _expiration, address(0));
-    }
-
-    function testFail_DepositExpirationBeforeBlock() public {
-        uint128 _expiration = uint128(block.timestamp) - 1;
-        token.approve(address(collateralization), 1);
-        collateralization.deposit(0, 1, _expiration, address(0));
-    }
-
-    function test_Lock() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Unlocked));
-        collateralization.lock(_id);
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Locked));
+        uint128 _id = collateralization.deposit(address(0), 1, _unlock);
+        assertEq(token.balanceOf(address(this)), _initialBalance - 1);
+        assertEq(token.balanceOf(address(collateralization)), 1);
+        assertEq(collateralization.getDeposit(_id).depositor, address(this));
         assertEq(collateralization.isSlashable(_id), true);
     }
 
-    function testFail_LockAtExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        vm.warp(_expiration);
-        collateralization.lock(_id);
+    function test_DepositUniqueID() public {
+        token.approve(address(collateralization), 2);
+        uint128 _id1 = collateralization.deposit(address(0), 1, 0);
+        uint128 _id2 = collateralization.deposit(address(0), 1, 0);
+        assertNotEq(_id1, _id2);
     }
 
-    function testFail_LockAfterExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+    function test_Lock() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        vm.warp(_expiration + 1);
-        collateralization.lock(_id);
+        uint128 _id = collateralization.deposit(address(this), 1, 0);
+        assertEq(collateralization.isSlashable(_id), false);
+        collateralization.lock(_id, _unlock);
+        assertEq(collateralization.isSlashable(_id), true);
+    }
+
+    function test_LockLocked() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        collateralization.lock(_id, _unlock);
+    }
+
+    function testFail_LockLockedModify() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        collateralization.lock(_id, _unlock - 1);
+    }
+
+    function testFail_LockAfterUnlock() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock + 1);
+        collateralization.lock(_id, _unlock + 1);
     }
 
     function testFail_getDepositNoDeposit() public view {
         collateralization.getDeposit(0);
     }
 
-    function test_WithdrawAtExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+    function test_Slash() public {
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        address _arbiter = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
+        uint256 _initialSupply = token.totalSupply();
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(_arbiter, 1, _unlock);
+        vm.warp(_unlock - 1);
+        vm.prank(_arbiter);
+        collateralization.slash(_id, 1);
+        assertEq(token.totalSupply(), _initialSupply - 1);
+    }
+
+    function testFail_SlashAtUnlock() public {
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock);
+        collateralization.slash(_id, 1);
+    }
+
+    function testFail_SlashAfterUnlock() public {
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock + 1);
+        collateralization.slash(_id, 1);
+    }
+
+    function testFail_SlashUnlocked() public {
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock + 1);
+        collateralization.slash(_id, 1);
+    }
+
+    function testFail_SlashFromNonArbiter() public {
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        address _arbiter = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
+        token.approve(address(collateralization), 1);
+        uint128 _id = collateralization.deposit(_arbiter, 1, _unlock);
+        vm.warp(_unlock - 1);
+        collateralization.slash(_id, 1);
+    }
+
+    function test_WithdrawAtUnlock() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
         uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock);
         collateralization.withdraw(_id);
         assertEq(token.balanceOf(address(this)), _initialBalance);
         assertEq(token.balanceOf(address(collateralization)), 0);
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Withdrawn));
     }
 
-    function test_WithdrawAfterExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+    function test_WithdrawAfterUnlock() public {
+        uint64 _unlock = uint64(block.timestamp) + 1;
         uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration + 1);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock + 1);
         collateralization.withdraw(_id);
         assertEq(token.balanceOf(address(this)), _initialBalance);
         assertEq(token.balanceOf(address(collateralization)), 0);
     }
 
-    function testFail_WithdrawBeforeExpiration() public {
+    function testFail_WithdrawBeforeUnlock() public {
         token.approve(address(collateralization), 1);
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration - 1);
+        uint64 _unlock = uint64(block.timestamp) + 3;
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock - 1);
         collateralization.withdraw(_id);
     }
 
     function test_WithdrawLocked() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+        uint64 _unlock = uint64(block.timestamp) + 1;
         uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock);
         collateralization.withdraw(_id);
         assertEq(token.balanceOf(address(this)), _initialBalance);
         assertEq(token.balanceOf(address(collateralization)), 0);
     }
 
     function testFail_WithdrawTwice() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+        uint64 _unlock = uint64(block.timestamp) + 1;
         token.approve(address(collateralization), 2);
-        uint128 _id = collateralization.deposit(0, 2, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration);
+        uint128 _id = collateralization.deposit(address(this), 2, _unlock);
+        vm.warp(_unlock);
         collateralization.withdraw(_id);
         collateralization.withdraw(_id);
     }
 
     function testFail_WithdrawFromNonDepositor() public {
-        uint128 _expiration = uint128(block.timestamp) + 1;
+        uint64 _unlock = uint64(block.timestamp) + 1;
         uint256 _initialBalance = token.balanceOf(address(this));
         address _other = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
         token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration);
+        uint128 _id = collateralization.deposit(address(this), 1, _unlock);
+        vm.warp(_unlock);
         vm.prank(_other);
         collateralization.withdraw(_id);
         assertEq(token.balanceOf(address(this)), _initialBalance);
-    }
-
-    function test_Slash() public {
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        address _arbiter = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
-        uint256 _initialSupply = token.totalSupply();
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, _arbiter);
-        vm.startPrank(_arbiter);
-        collateralization.lock(_id);
-        vm.warp(_expiration - 1);
-        collateralization.slash(_id, 1);
-        vm.stopPrank();
-        assertEq(token.totalSupply(), _initialSupply - 1);
-        assertEq(uint256(collateralization.getDeposit(_id).state), uint256(DepositState.Locked));
-    }
-
-    function testFail_SlashAtExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration);
-        collateralization.slash(_id, 1);
-    }
-
-    function testFail_SlashAfterExpiration() public {
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        collateralization.lock(_id);
-        vm.warp(_expiration + 1);
-        collateralization.slash(_id, 1);
-    }
-
-    function testFail_SlashUnlocked() public {
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, address(this));
-        vm.warp(_expiration + 1);
-        collateralization.slash(_id, 1);
-    }
-
-    function testFail_SlashFromNonArbiter() public {
-        uint128 _expiration = uint128(block.timestamp) + 3;
-        address _arbiter = 0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;
-        token.approve(address(collateralization), 1);
-        uint128 _id = collateralization.deposit(0, 1, _expiration, _arbiter);
-        vm.warp(_expiration - 1);
-        collateralization.slash(_id, 1);
     }
 }

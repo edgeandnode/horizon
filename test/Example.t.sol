@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {ERC20Burnable} from "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Collateralization, Deposit, DepositState, UnexpectedState} from "../src/Collateralization.sol";
+import {Collateralization, DepositState} from "../src/Collateralization.sol";
 import {DataService} from "../src/examples/DataService.sol";
 import {Lender, Limits} from "../src/examples/Lender.sol";
 import {
@@ -24,6 +24,8 @@ contract CollateralizationUnitTests is Test, ILender {
     LoanAggregator public aggregator;
     Lender public lender;
 
+    function onCollateralWithraw(uint256 _value, uint96 _lenderData) public {}
+
     function setUp() public {
         token = new TestToken(1_000);
         collateralization = new Collateralization(token);
@@ -32,8 +34,6 @@ contract CollateralizationUnitTests is Test, ILender {
         lender = new Lender(aggregator, Limits({maxValue: 100, maxDuration: 30 days}));
         token.transfer(address(lender), 80);
     }
-
-    function onCollateralWithraw(uint256 _value, uint96 _lenderData) public {}
 
     function test_Example() public {
         // Add this contract as a data service provider to receive 10 tokens in payment.
@@ -53,8 +53,8 @@ contract CollateralizationUnitTests is Test, ILender {
         token.approve(address(lender), 6);
         _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());
         // Receive 10 token payment and start dispute period.
-        uint128 _expiration = uint128(block.timestamp) + dataService.disputePeriod();
-        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _expiration, _loanCommitments);
+        uint64 _unlock = uint64(block.timestamp) + dataService.disputePeriod();
+        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _unlock, _loanCommitments);
 
         assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 26);
         assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 6 - 80);
@@ -84,8 +84,8 @@ contract CollateralizationUnitTests is Test, ILender {
         token.approve(address(lender), 6);
         _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());
         // Receive 10 token payment and start dispute period.
-        uint128 _expiration = uint128(block.timestamp) + dataService.disputePeriod();
-        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _expiration, _loanCommitments);
+        uint64 _unlock = uint64(block.timestamp) + dataService.disputePeriod();
+        uint128 _deposit = aggregator.remitPayment(DataService(dataService), _unlock, _loanCommitments);
 
         assertEq(token.balanceOf(address(this)), _initialBalance + 10 - 26);
         assertEq(token.balanceOf(address(lender)), _initialLenderBalance + 6 - 80);

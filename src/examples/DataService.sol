@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
-import {Collateralization, Deposit} from "../Collateralization.sol";
+import {Collateralization, DepositState} from "../Collateralization.sol";
 import {IDataService} from "./LoanAggregator.sol";
 
 contract DataService is Ownable, IDataService {
@@ -13,9 +13,9 @@ contract DataService is Ownable, IDataService {
 
     Collateralization public collateralization;
     mapping(address => ProviderState) public providers;
-    uint128 public disputePeriod;
+    uint64 public disputePeriod;
 
-    constructor(Collateralization _collateralization, uint128 _disputePeriod) {
+    constructor(Collateralization _collateralization, uint64 _disputePeriod) {
         collateralization = _collateralization;
         disputePeriod = _disputePeriod;
     }
@@ -41,17 +41,17 @@ contract DataService is Ownable, IDataService {
     }
 
     /// Called by data service provider to receive payment. This locks the given deposit to begin a dispute period.
-    function remitPayment(address _providerAddr, uint128 _depositID) public {
+    function remitPayment(address _providerAddr, uint128 _depositID, uint64 _unlock) public {
         ProviderState memory _provider = getProviderState(_providerAddr);
-        Deposit memory _deposit = collateralization.getDeposit(_depositID);
+        DepositState memory _deposit = collateralization.getDeposit(_depositID);
 
         uint256 minCollateral = uint256(_provider.payment) * 10;
         require(_deposit.value >= minCollateral, "collateral below minimum");
         uint128 disputePeriodEnd = uint128(block.timestamp + disputePeriod);
-        require(_deposit.expiration >= disputePeriodEnd, "collateral expiration before end of dispute period");
+        require(_unlock >= disputePeriodEnd, "collateral unlock before end of dispute period");
 
         providers[_providerAddr].deposit = _depositID;
-        collateralization.lock(_depositID);
+        collateralization.lock(_depositID, _unlock);
         collateralization.token().transfer(_providerAddr, _provider.payment);
     }
 

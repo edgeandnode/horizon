@@ -30,12 +30,12 @@ contract Lender is Ownable, ILender {
         return agg.collateralization().token().transfer(owner(), _amount);
     }
 
-    function borrow(uint256 _value, uint256 _collateral, uint256 _payment, uint128 _expiration)
+    function borrow(uint256 _value, uint256 _collateral, uint256 _payment, uint64 _unlock)
         public
         returns (LoanCommitment memory)
     {
         require(_collateral <= _value, "collateral > value");
-        uint64 _duration = SafeCast.toUint64(_expiration - block.timestamp);
+        uint64 _duration = SafeCast.toUint64(_unlock - block.timestamp);
         require(_duration <= limits.maxDuration, "duration over maximum");
         require(_value <= limits.maxValue, "value over maximum");
         require(_payment >= expectedPayment(_value, _duration), "payment below expected");

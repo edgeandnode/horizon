@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {Collateralization, Deposit, DepositState} from "../Collateralization.sol";
+import {Collateralization, DepositState} from "../Collateralization.sol";
 
 interface IDataService {
-    function remitPayment(address _provider, uint128 _deposit) external;
+    function remitPayment(address _provider, uint128 _deposit, uint64 _unlock) external;
 }
 
 interface ILender {
@@ -30,7 +30,7 @@ contract LoanAggregator {
         collateralization = _collateralization;
     }
 
-    function remitPayment(IDataService _arbiter, uint128 _expiration, LoanCommitment[] calldata _loanCommitments)
+    function remitPayment(IDataService _arbiter, uint64 _unlock, LoanCommitment[] calldata _loanCommitments)
         public
         returns (uint128)
     {
@@ -38,7 +38,7 @@ contract LoanAggregator {
         uint256 _value = 0;
         while (_index < _loanCommitments.length) {
             LoanCommitment memory _commitment = _loanCommitments[_index];
-            // TODO: verify signature of (lender, value, arbiter, expiration)
+            // TODO: verify signature of (lender, value, arbiter, unlock)
             _value += _commitment.loan.value;
             collateralization.token().transferFrom(
                 address(_commitment.loan.lender), address(this), _commitment.loan.value
@@ -46,18 +46,18 @@ contract LoanAggregator {
             _index += 1;
         }
         collateralization.token().approve(address(collateralization), _value);
-        uint128 _deposit = collateralization.deposit(0, _value, _expiration, address(_arbiter));
+        uint128 _deposit = collateralization.deposit(address(_arbiter), _value, _unlock);
         _index = 0;
         while (_index < _loanCommitments.length) {
             loans[_deposit].push(_loanCommitments[_index].loan);
             _index += 1;
         }
-        _arbiter.remitPayment(msg.sender, _deposit);
+        _arbiter.remitPayment(msg.sender, _deposit, _unlock);
         return _deposit;
     }
 
     function withdraw(uint128 _depositID) public {
-        Deposit memory _deposit = collateralization.getDeposit(_depositID);
+        DepositState memory _deposit = collateralization.getDeposit(_depositID);
         collateralization.withdraw(_depositID);
         // calculate original deposit value
         uint256 _index = 0;
