@@ -24,14 +24,14 @@ contract CollateralizationUnitTests is Test, ILender {
     LoanAggregator public aggregator;
     Lender public lender;
 
-    function onCollateralWithraw(uint256 _value, uint96 _lenderData) public {}
+    function onCollateralWithraw(uint256 _amount, uint96 _lenderData) public {}
 
     function setUp() public {
         token = new TestToken(1_000);
         collateralization = new Collateralization(token);
         aggregator = new LoanAggregator(collateralization);
         dataService = new DataService(collateralization, 20 days);
-        lender = new Lender(aggregator, Limits({maxValue: 100, maxDuration: 30 days}));
+        lender = new Lender(aggregator, Limits({maxAmount: 100, maxDuration: 30 days}));
         token.transfer(address(lender), 80);
     }
 
@@ -48,7 +48,7 @@ contract CollateralizationUnitTests is Test, ILender {
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
         token.approve(address(aggregator), 20);
         _loanCommitments[0] =
-            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, value: 20}), signature: "siggy"});
+            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, amount: 20}), signature: "siggy"});
         // Send lender 5 tokens in collateral and 1 token in payment (6 total) for a 80 token loan.
         token.approve(address(lender), 6);
         _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());
@@ -79,7 +79,7 @@ contract CollateralizationUnitTests is Test, ILender {
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
         token.approve(address(aggregator), 20);
         _loanCommitments[0] =
-            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, value: 20}), signature: "siggy"});
+            LoanCommitment({loan: AggregatedLoan({lender: this, lenderData: 0, amount: 20}), signature: "siggy"});
         // Send lender 5 tokens in collateral and 1 token in payment (6 total) for a 80 token loan.
         token.approve(address(lender), 6);
         _loanCommitments[1] = lender.borrow(80, 5, 1, dataService.disputePeriod());

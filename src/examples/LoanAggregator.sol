@@ -8,7 +8,7 @@ interface IDataService {
 }
 
 interface ILender {
-    function onCollateralWithraw(uint256 _value, uint96 _lenderData) external;
+    function onCollateralWithraw(uint256 _amount, uint96 _lenderData) external;
 }
 
 struct LoanCommitment {
@@ -19,7 +19,7 @@ struct LoanCommitment {
 struct AggregatedLoan {
     ILender lender;
     uint96 lenderData;
-    uint256 value;
+    uint256 amount;
 }
 
 contract LoanAggregator {
@@ -35,18 +35,18 @@ contract LoanAggregator {
         returns (uint128)
     {
         uint256 _index = 0;
-        uint256 _value = 0;
+        uint256 _amount = 0;
         while (_index < _loanCommitments.length) {
             LoanCommitment memory _commitment = _loanCommitments[_index];
-            // TODO: verify signature of (lender, value, arbiter, unlock)
-            _value += _commitment.loan.value;
+            // TODO: verify signature of (lender, amount, arbiter, unlock)
+            _amount += _commitment.loan.amount;
             collateralization.token().transferFrom(
-                address(_commitment.loan.lender), address(this), _commitment.loan.value
+                address(_commitment.loan.lender), address(this), _commitment.loan.amount
             );
             _index += 1;
         }
-        collateralization.token().approve(address(collateralization), _value);
-        uint128 _deposit = collateralization.deposit(address(_arbiter), _value, _unlock);
+        collateralization.token().approve(address(collateralization), _amount);
+        uint128 _deposit = collateralization.deposit(address(_arbiter), _amount, _unlock);
         _index = 0;
         while (_index < _loanCommitments.length) {
             loans[_deposit].push(_loanCommitments[_index].loan);
@@ -59,18 +59,18 @@ contract LoanAggregator {
     function withdraw(uint128 _depositID) public {
         Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
         collateralization.withdraw(_depositID);
-        // calculate original deposit value
+        // calculate original deposit amount
         uint256 _index = 0;
-        uint256 _initialValue = 0;
+        uint256 _initialAmount = 0;
         while (_index < loans[_depositID].length) {
-            _initialValue += loans[_depositID][_index].value;
+            _initialAmount += loans[_depositID][_index].amount;
             _index += 1;
         }
-        // distribute remaining deposit value back to lenders
+        // distribute remaining deposit amount back to lenders
         _index = 0;
         while (_index < loans[_depositID].length) {
             AggregatedLoan memory _loan = loans[_depositID][_index];
-            uint256 _lenderReturn = (_loan.value * _deposit.value) / _initialValue;
+            uint256 _lenderReturn = (_loan.amount * _deposit.amount) / _initialAmount;
             collateralization.token().transfer(address(_loan.lender), _lenderReturn);
             _loan.lender.onCollateralWithraw(_lenderReturn, _loan.lenderData);
             _index += 1;

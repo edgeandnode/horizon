@@ -46,7 +46,7 @@ contract DataService is Ownable, IDataService {
         Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
 
         uint256 minCollateral = uint256(_provider.payment) * 10;
-        require(_deposit.value >= minCollateral, "collateral below minimum");
+        require(_deposit.amount >= minCollateral, "collateral below minimum");
         uint128 disputePeriodEnd = uint128(block.timestamp + disputePeriod);
         require(_unlock >= disputePeriodEnd, "collateral unlock before end of dispute period");
 

@@ -5,7 +5,7 @@ import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.so
 
 /// This contract manages slashable, potentially time-locked token deposits.
 contract Collateralization {
-    event Deposit(uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 value, uint64 unlock);
+    event Deposit(uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 amount, uint64 unlock);
     event Lock(uint128 indexed id, uint64 unlock);
     event Slash(uint128 indexed id, uint256 amount);
     event Withdraw(uint128 indexed id);
@@ -13,16 +13,16 @@ contract Collateralization {
     /// The state associated with a deposit. When a deposit is locked (`block.timestamp < unlock`) it has the following
     /// properties:
     /// - A deposit may only be withdrawn when the deposit is unlocked (`block.timestamp >= unlock`). Withdrawal returns the
-    ///   deposit's token value to the depositor.
+    ///   deposit's token amount to the depositor.
     /// - The arbiter has authority to slash the deposit before unlock, which burns a given amount tokens. A slash also
     ///   reduces the tokens available to withdraw by the same amount.
     struct DepositState {
         // creator of the deposit, has ability to withdraw when the deposit is unlocked
         address depositor;
-        // authority to slash deposit value, when the deposit is locked
+        // authority to slash deposit amount, when the deposit is locked
         address arbiter;
         // token amount associated with deposit
-        uint256 value;
+        uint256 amount;
         // timestamp when deposit is no longer locked
         uint64 unlock;
         // timestamp of deposit creation
@@ -66,22 +66,22 @@ contract Collateralization {
 
     /// Create a new deposit, returning its associated ID.
     /// @param _arbiter Arbiter of the new deposit.
-    /// @param _value Initial token value of the new deposit.
+    /// @param _amount Initial token amount of the new deposit.
     /// @param _unlock Unlock timestamp of the new deposit, in seconds. Set to a nonzero value to lock deposit.
     /// @return id Unique ID associated with the new deposit.
-    function deposit(address _arbiter, uint256 _value, uint64 _unlock) external returns (uint128) {
+    function deposit(address _arbiter, uint256 _amount, uint64 _unlock) external returns (uint128) {
         lastID += 1;
         deposits[lastID] = DepositState({
             depositor: msg.sender,
             arbiter: _arbiter,
-            value: _value,
+            amount: _amount,
             unlock: _unlock,
             start: uint64(block.timestamp),
             end: 0
         });
-        bool _transferSuccess = token.transferFrom(msg.sender, address(this), _value);
+        bool _transferSuccess = token.transferFrom(msg.sender, address(this), _amount);
         require(_transferSuccess, "transfer failed");
-        emit Deposit(lastID, msg.sender, _arbiter, _value, _unlock);
+        emit Deposit(lastID, msg.sender, _arbiter, _amount, _unlock);
         return lastID;
     }
 
@@ -100,7 +100,7 @@ contract Collateralization {
         emit Lock(_id, _unlock);
     }
 
-    /// Burn some amount of the deposit value while it's locked. This action can only be performed by the arbiter of
+    /// Burn some of the deposit amount while it's locked. This action can only be performed by the arbiter of
     /// the deposit associated with the given ID.
     /// @param _id ID of the associated deposit.
     /// @param _amount Amount of remaining deposit tokens to burn.
@@ -109,8 +109,8 @@ contract Collateralization {
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
         require(block.timestamp < _deposit.unlock, "deposit unlocked");
-        require(_amount <= _deposit.value, "amount too large");
-        deposits[_id].value -= _amount;
+        require(_amount <= _deposit.amount, "amount too large");
+        deposits[_id].amount -= _amount;
         token.burn(_amount);
         emit Slash(_id, _amount);
     }
@@ -123,7 +123,7 @@ contract Collateralization {
         require(_deposit.end == 0, "deposit withdrawn");
         require(block.timestamp >= _deposit.unlock, "deposit locked");
         deposits[_id].end = uint64(block.timestamp);
-        bool _transferSuccess = token.transfer(_deposit.depositor, _deposit.value);
+        bool _transferSuccess = token.transfer(_deposit.depositor, _deposit.amount);
         require(_transferSuccess, "transfer failed");
         emit Withdraw(_id);
     }

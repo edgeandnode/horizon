@@ -36,12 +36,15 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         vm.warp(block.timestamp + bound(blocks, 1, 10));
     }
 
-    function deposit(uint256 __sender, uint256 __arbiter, uint256 __value, uint256 __unlock) public returns (uint128) {
+    function deposit(uint256 __sender, uint256 __arbiter, uint256 __amount, uint256 __unlock)
+        public
+        returns (uint128)
+    {
         address _depositor = _genActor(__sender);
-        uint256 _value = bound(__value, 1, collateralization.token().balanceOf(_depositor));
+        uint256 _amount = bound(__amount, 1, collateralization.token().balanceOf(_depositor));
         vm.startPrank(_depositor);
-        collateralization.token().approve(address(collateralization), _value);
-        uint128 _id = collateralization.deposit(_genActor(__arbiter), _value, _genTimestamp(__unlock));
+        collateralization.token().approve(address(collateralization), _amount);
+        uint128 _id = collateralization.deposit(_genActor(__arbiter), _amount, _genTimestamp(__unlock));
         vm.stopPrank();
         depositIDs.push(_id);
         return _id;
@@ -62,7 +65,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
     function slash(uint256 __sender, uint256 __id, uint256 __amount) public {
         uint128 _id = _genID(__id);
         vm.prank(_genActor(__sender));
-        collateralization.slash(_id, bound(__amount, 0, collateralization.getDeposit(_id).value));
+        collateralization.slash(_id, bound(__amount, 0, collateralization.getDeposit(_id).amount));
         assert(collateralization.isSlashable(_id));
         _removeDepositID(_id);
     }
@@ -74,7 +77,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
             uint128 _id = depositIDs[_index];
             Collateralization.DepositState memory _deposit = collateralization.getDeposit(_id);
             if (_deposit.depositor != address(0)) {
-                total += _deposit.value;
+                total += _deposit.amount;
             }
             _index += 1;
         }
