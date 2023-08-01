@@ -70,7 +70,7 @@ contract Collateralization {
     /// @param _value Initial token value of the new deposit.
     /// @param _unlock Unlock timestamp of the new deposit, in seconds. Set to a nonzero value to lock deposit.
     /// @return id Unique ID associated with the new deposit.
-    function deposit(address _arbiter, uint256 _value, uint64 _unlock) public returns (uint128) {
+    function deposit(address _arbiter, uint256 _value, uint64 _unlock) external returns (uint128) {
         lastID += 1;
         deposits[lastID] = DepositState({
             depositor: msg.sender,
@@ -89,7 +89,7 @@ contract Collateralization {
     /// Lock the deposit associated with the given ID. This makes the deposit slashable until it is unlocked.
     /// @param _id ID of the associated deposit.
     /// @param _unlock Unlock timestamp of deposit, in seconds.
-    function lock(uint128 _id, uint64 _unlock) public {
+    function lock(uint128 _id, uint64 _unlock) external {
         DepositState memory _deposit = getDeposit(_id);
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
@@ -105,7 +105,7 @@ contract Collateralization {
     /// the deposit associated with the given ID.
     /// @param _id ID of the associated deposit.
     /// @param _amount Amount of remaining deposit tokens to burn.
-    function slash(uint128 _id, uint256 _amount) public {
+    function slash(uint128 _id, uint256 _amount) external {
         DepositState memory _deposit = getDeposit(_id);
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
@@ -118,7 +118,7 @@ contract Collateralization {
 
     /// Collect remaining tokens associated with a deposit.
     /// @param _id ID of the associated deposit.
-    function withdraw(uint128 _id) public {
+    function withdraw(uint128 _id) external {
         DepositState memory _deposit = getDeposit(_id);
         require(_deposit.depositor == msg.sender, "sender not depositor");
         require(_deposit.end == 0, "deposit withdrawn");
@@ -139,7 +139,7 @@ contract Collateralization {
 
     /// Return true if the deposit associated with the given ID is slashable, false otherwise.
     /// @param _id ID of the associated deposit.
-    function isSlashable(uint128 _id) public view returns (bool) {
+    function isSlashable(uint128 _id) external view returns (bool) {
         DepositState memory _deposit = getDeposit(_id);
         return (block.timestamp < _deposit.unlock);
     }
