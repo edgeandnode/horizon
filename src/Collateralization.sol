@@ -47,7 +47,7 @@ struct DepositState {
 
 /// This contract manages Deposits as described above.
 contract Collateralization {
-    event Deposit(uint128 indexed id, address indexed arbiter, uint256 value, uint64 unlock);
+    event Deposit(uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 value, uint64 unlock);
     event Lock(uint128 indexed id, uint64 unlock);
     event Slash(uint128 indexed id, uint256 amount);
     event Withdraw(uint128 indexed id);
@@ -82,7 +82,7 @@ contract Collateralization {
         });
         bool _transferSuccess = token.transferFrom(msg.sender, address(this), _value);
         require(_transferSuccess, "transfer failed");
-        emit Deposit(lastID, _arbiter, _value, _unlock);
+        emit Deposit(lastID, msg.sender, _arbiter, _value, _unlock);
         return lastID;
     }
 
