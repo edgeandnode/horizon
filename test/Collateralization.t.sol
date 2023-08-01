@@ -170,7 +170,7 @@ contract CollateralizationUnitTests is Test {
         assertEq(collateralization.isSlashable(_id), true);
     }
 
-    function test_LockLocked() public {
+    function testFail_LockLocked() public {
         uint64 _unlock = uint64(block.timestamp) + 1;
         token.approve(address(collateralization), 1);
         uint128 _id = collateralization.deposit(address(this), 1, _unlock);

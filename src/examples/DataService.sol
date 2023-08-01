@@ -51,7 +51,9 @@ contract DataService is Ownable, IDataService {
         require(_unlock >= disputePeriodEnd, "collateral unlock before end of dispute period");
 
         providers[_providerAddr].deposit = _depositID;
-        collateralization.lock(_depositID, _unlock);
+        if (_deposit.unlock == 0) {
+            collateralization.lock(_depositID, _unlock);
+        }
         collateralization.token().transfer(_providerAddr, _provider.payment);
     }
 

@@ -5,7 +5,9 @@ import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.so
 
 /// This contract manages slashable, potentially time-locked token deposits.
 contract Collateralization {
-    event Deposit(uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 amount, uint64 unlock);
+    event Deposit(
+        uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 amount, uint64 unlock
+    );
     event Lock(uint128 indexed id, uint64 unlock);
     event Slash(uint128 indexed id, uint256 amount);
     event Withdraw(uint128 indexed id);
@@ -92,9 +94,6 @@ contract Collateralization {
         DepositState memory _deposit = getDeposit(_id);
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
-        if (_deposit.unlock == _unlock) {
-            return;
-        }
         require(_deposit.unlock == 0, "deposit locked");
         deposits[_id].unlock = _unlock;
         emit Lock(_id, _unlock);
