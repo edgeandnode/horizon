@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
-import {Collateralization, DepositState} from "../Collateralization.sol";
+import {Collateralization} from "../Collateralization.sol";
 import {IDataService} from "./LoanAggregator.sol";
 
 contract DataService is Ownable, IDataService {
@@ -43,7 +43,7 @@ contract DataService is Ownable, IDataService {
     /// Called by data service provider to receive payment. This locks the given deposit to begin a dispute period.
     function remitPayment(address _providerAddr, uint128 _depositID, uint64 _unlock) public {
         ProviderState memory _provider = getProviderState(_providerAddr);
-        DepositState memory _deposit = collateralization.getDeposit(_depositID);
+        Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
 
         uint256 minCollateral = uint256(_provider.payment) * 10;
         require(_deposit.value >= minCollateral, "collateral below minimum");

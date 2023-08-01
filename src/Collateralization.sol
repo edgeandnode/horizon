@@ -3,54 +3,54 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-/// The state associated with a slashable, potentially time-locked deposit of tokens. When a deposit is locked
-/// (`block.timestamp < unlock`) it has the following properties:
-/// - A deposit may only be withdrawn when the deposit is unlocked (`block.timestamp >= unlock`). Withdrawal returns the
-///   deposit's token value to the depositor.
-/// - The arbiter has authority to slash the deposit before unlock, which burns a given amount tokens. A slash also
-///   reduces the tokens available to withdraw by the same amount.
-struct DepositState {
-    // creator of the deposit, has ability to withdraw when the deposit is unlocked
-    address depositor;
-    // authority to slash deposit value, when the deposit is locked
-    address arbiter;
-    // token amount associated with deposit
-    uint256 value;
-    // timestamp when deposit is no longer locked
-    uint64 unlock;
-    // timestamp of deposit creation
-    uint64 start;
-    // timestamp of withdrawal, 0 until withdrawn
-    uint64 end;
-}
-
-//                    ┌────────┐                         ┌──────┐          ┌─────────┐
-//                    │unlocked│                         │locked│          │withdrawn│
-//                    └───┬────┘                         └──┬───┘          └────┬────┘
-//  deposit (unlock == 0) │                                 │                   │
-//  ─────────────────────>│                                 │                   │
-//                        │                                 │                   │
-//                   deposit (unlock != 0)                  │                   │
-//  ───────────────────────────────────────────────────────>│                   │
-//                        │                                 │                   │
-//                        │ lock (block.timestamp < _unlock)│                   │
-//                        │ ───────────────────────────────>│                   │
-//                        │                                 │                   │
-//                        │   (block.timestamp >= unlock)   │                   │
-//                        │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
-//                        │                                 │                   │
-//                        │                      withdraw   │                   │
-//                        │ ───────────────────────────────────────────────────>│
-//                    ┌───┴────┐                         ┌──┴───┐          ┌────┴────┐
-//                    │unlocked│                         │locked│          │withdrawn│
-//                    └────────┘                         └──────┘          └─────────┘
-
-/// This contract manages Deposits as described above.
+/// This contract manages slashable, potentially time-locked token deposits.
 contract Collateralization {
     event Deposit(uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 value, uint64 unlock);
     event Lock(uint128 indexed id, uint64 unlock);
     event Slash(uint128 indexed id, uint256 amount);
     event Withdraw(uint128 indexed id);
+
+    /// The state associated with a deposit. When a deposit is locked (`block.timestamp < unlock`) it has the following
+    /// properties:
+    /// - A deposit may only be withdrawn when the deposit is unlocked (`block.timestamp >= unlock`). Withdrawal returns the
+    ///   deposit's token value to the depositor.
+    /// - The arbiter has authority to slash the deposit before unlock, which burns a given amount tokens. A slash also
+    ///   reduces the tokens available to withdraw by the same amount.
+    struct DepositState {
+        // creator of the deposit, has ability to withdraw when the deposit is unlocked
+        address depositor;
+        // authority to slash deposit value, when the deposit is locked
+        address arbiter;
+        // token amount associated with deposit
+        uint256 value;
+        // timestamp when deposit is no longer locked
+        uint64 unlock;
+        // timestamp of deposit creation
+        uint64 start;
+        // timestamp of withdrawal, 0 until withdrawn
+        uint64 end;
+    }
+
+    //                    ┌────────┐                         ┌──────┐          ┌─────────┐
+    //                    │unlocked│                         │locked│          │withdrawn│
+    //                    └───┬────┘                         └──┬───┘          └────┬────┘
+    //  deposit (unlock == 0) │                                 │                   │
+    //  ─────────────────────>│                                 │                   │
+    //                        │                                 │                   │
+    //                   deposit (unlock != 0)                  │                   │
+    //  ───────────────────────────────────────────────────────>│                   │
+    //                        │                                 │                   │
+    //                        │ lock (block.timestamp < _unlock)│                   │
+    //                        │ ───────────────────────────────>│                   │
+    //                        │                                 │                   │
+    //                        │   (block.timestamp >= unlock)   │                   │
+    //                        │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
+    //                        │                                 │                   │
+    //                        │                      withdraw   │                   │
+    //                        │ ───────────────────────────────────────────────────>│
+    //                    ┌───┴────┐                         ┌──┴───┐          ┌────┴────┐
+    //                    │unlocked│                         │locked│          │withdrawn│
+    //                    └────────┘                         └──────┘          └─────────┘
 
     /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public immutable token;

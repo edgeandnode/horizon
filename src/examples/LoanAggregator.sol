@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {Collateralization, DepositState} from "../Collateralization.sol";
+import {Collateralization} from "../Collateralization.sol";
 
 interface IDataService {
     function remitPayment(address _provider, uint128 _deposit, uint64 _unlock) external;
@@ -57,7 +57,7 @@ contract LoanAggregator {
     }
 
     function withdraw(uint128 _depositID) public {
-        DepositState memory _deposit = collateralization.getDeposit(_depositID);
+        Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
         collateralization.withdraw(_depositID);
         // calculate original deposit value
         uint256 _index = 0;

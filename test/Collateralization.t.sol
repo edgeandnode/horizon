@@ -6,7 +6,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC20Burnable} from "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Collateralization, DepositState} from "../src/Collateralization.sol";
+import {Collateralization} from "../src/Collateralization.sol";
 
 contract TestToken is ERC20Burnable {
     constructor(uint256 _initialSupply) ERC20("MockCoin", "MOCK") {
@@ -72,7 +72,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         uint64 _index = 0;
         while (_index < depositIDs.length) {
             uint128 _id = depositIDs[_index];
-            DepositState memory _deposit = collateralization.getDeposit(_id);
+            Collateralization.DepositState memory _deposit = collateralization.getDeposit(_id);
             if (_deposit.depositor != address(0)) {
                 total += _deposit.value;
             }

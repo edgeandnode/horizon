@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {ERC20Burnable} from "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Collateralization, DepositState} from "../src/Collateralization.sol";
+import {Collateralization} from "../src/Collateralization.sol";
 import {DataService} from "../src/examples/DataService.sol";
 import {Lender, Limits} from "../src/examples/Lender.sol";
 import {
