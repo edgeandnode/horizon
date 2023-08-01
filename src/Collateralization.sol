@@ -53,7 +53,7 @@ contract Collateralization {
     event Withdraw(uint128 indexed id);
 
     /// Burnable ERC-20 token held by this contract.
-    ERC20Burnable public token;
+    ERC20Burnable public immutable token;
     /// Mapping of deposit IDs to deposits.
     mapping(uint128 => DepositState) public deposits;
     /// Counter for assigning new deposit IDs.
@@ -61,7 +61,6 @@ contract Collateralization {
 
     /// @param _token the burnable ERC-20 token held by this contract.
     constructor(ERC20Burnable _token) {
-        // TODO: use a constant
         token = _token;
     }
 
