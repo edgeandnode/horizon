@@ -15,8 +15,8 @@ contract Collateralization is Multicall {
 
     /// The state associated with a deposit. When a deposit is locked (`block.timestamp < unlock`) it has the following
     /// properties:
-    /// - A deposit may only be withdrawn when the deposit is unlocked (`block.timestamp >= unlock`). Withdrawal returns the
-    ///   deposit's token amount to the depositor.
+    /// - A deposit may only be withdrawn when the deposit is unlocked (`block.timestamp >= unlock`). Withdrawal returns
+    ///   the deposit's token amount to the depositor.
     /// - The arbiter has authority to slash the deposit before unlock, which burns a given amount tokens. A slash also
     ///   reduces the tokens available to withdraw by the same amount.
     struct DepositState {
@@ -34,26 +34,26 @@ contract Collateralization is Multicall {
         uint64 end;
     }
 
-    //                    ┌────────┐                         ┌──────┐          ┌─────────┐
-    //                    │unlocked│                         │locked│          │withdrawn│
-    //                    └───┬────┘                         └──┬───┘          └────┬────┘
-    //  deposit (unlock == 0) │                                 │                   │
-    //  ─────────────────────>│                                 │                   │
-    //                        │                                 │                   │
-    //                   deposit (unlock != 0)                  │                   │
-    //  ───────────────────────────────────────────────────────>│                   │
-    //                        │                                 │                   │
-    //                        │ lock (block.timestamp < _unlock)│                   │
-    //                        │ ───────────────────────────────>│                   │
-    //                        │                                 │                   │
-    //                        │   (block.timestamp >= unlock)   │                   │
-    //                        │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
-    //                        │                                 │                   │
-    //                        │                      withdraw   │                   │
-    //                        │ ───────────────────────────────────────────────────>│
-    //                    ┌───┴────┐                         ┌──┴───┐          ┌────┴────┐
-    //                    │unlocked│                         │locked│          │withdrawn│
-    //                    └────────┘                         └──────┘          └─────────┘
+    //                     ┌────────┐                           ┌──────┐          ┌─────────┐
+    //                     │unlocked│                           │locked│          │withdrawn│
+    //                     └───┬────┘                           └──┬───┘          └────┬────┘
+    //  deposit (_unlock == 0) │                                   │                   │
+    //  ──────────────────────>│                                   │                   │
+    //                         │                                   │                   │
+    //  deposit (block.timestamp < _unlock)                        │                   │
+    //  ──────────────────────────────────────────────────────────>│                   │
+    //                         │                                   │                   │
+    //                         │  lock (block.timestamp < _unlock) │                   │
+    //                         │ ─────────────────────────────────>│                   │
+    //                         │                                   │                   │
+    //                         │     (block.timestamp >= unlock)   │                   │
+    //                         │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
+    //                         │                                   │                   │
+    //                         │     withdraw                      │                   │
+    //                         │ ─────────────────────────────────────────────────────>│
+    //                     ┌───┴────┐                           ┌──┴───┐          ┌────┴────┐
+    //                     │unlocked│                           │locked│          │withdrawn│
+    //                     └────────┘                           └──────┘          └─────────┘
 
     /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public immutable token;
@@ -88,7 +88,8 @@ contract Collateralization is Multicall {
         return lastID;
     }
 
-    /// Lock the deposit associated with the given ID. This makes the deposit slashable until it is unlocked.
+    /// Lock the deposit associated with the given ID. This makes the deposit slashable until it is unlocked. This
+    /// modification to a deposit can only made when its unlock timestamp is unset (has a value of zero).
     /// @param _id ID of the associated deposit.
     /// @param _unlock Unlock timestamp of deposit, in seconds.
     function lock(uint128 _id, uint64 _unlock) external {
@@ -136,7 +137,9 @@ contract Collateralization is Multicall {
         return _deposit;
     }
 
-    /// Return true if the deposit associated with the given ID is slashable, false otherwise.
+    /// Return true if the deposit associated with the given ID is slashable, false otherwise. A slashable deposit is
+    /// locked (`block.timestamp < unlock`). As the name suggests, a slashable deposit may be slashed, and cannot be
+    /// withdrawn by the depositor until it is unlocked (`block.timestamp >= unlock`).
     /// @param _id ID of the associated deposit.
     function isSlashable(uint128 _id) external view returns (bool) {
         DepositState memory _deposit = getDeposit(_id);
