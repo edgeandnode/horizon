@@ -34,26 +34,26 @@ contract Collateralization is Multicall {
         uint64 end;
     }
 
-    //                     ┌────────┐                           ┌──────┐          ┌─────────┐
-    //                     │unlocked│                           │locked│          │withdrawn│
-    //                     └───┬────┘                           └──┬───┘          └────┬────┘
-    //  deposit (_unlock == 0) │                                   │                   │
-    //  ──────────────────────>│                                   │                   │
-    //                         │                                   │                   │
-    //  deposit (block.timestamp < _unlock)                        │                   │
-    //  ──────────────────────────────────────────────────────────>│                   │
-    //                         │                                   │                   │
-    //                         │  lock (block.timestamp < _unlock) │                   │
-    //                         │ ─────────────────────────────────>│                   │
-    //                         │                                   │                   │
-    //                         │     (block.timestamp >= unlock)   │                   │
-    //                         │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
-    //                         │                                   │                   │
-    //                         │     withdraw                      │                   │
-    //                         │ ─────────────────────────────────────────────────────>│
-    //                     ┌───┴────┐                           ┌──┴───┐          ┌────┴────┐
-    //                     │unlocked│                           │locked│          │withdrawn│
-    //                     └────────┘                           └──────┘          └─────────┘
+    //                                  ┌────────┐                           ┌──────┐          ┌─────────┐
+    //                                  │unlocked│                           │locked│          │withdrawn│
+    //                                  └───┬────┘                           └──┬───┘          └────┬────┘
+    //  deposit (block.timestamp >= unlock) │                                   │                   │
+    //  ───────────────────────────────────>│                                   │                   │
+    //                                      │                                   │                   │
+    //  deposit (block.timestamp < unlock)  │                                   │                   │
+    //  ───────────────────────────────────────────────────────────────────────>│                   │
+    //                                      │                                   │                   │
+    //                                      │  lock (block.timestamp < unlock)  │                   │
+    //                                      │ ─────────────────────────────────>│                   │
+    //                                      │                                   │                   │
+    //                                      │     (block.timestamp >= unlock)   │                   │
+    //                                      │ <─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                   │
+    //                                      │                                   │                   │
+    //                                      │     withdraw                      │                   │
+    //                                      │ ─────────────────────────────────────────────────────>│
+    //                                  ┌───┴────┐                           ┌──┴───┐          ┌────┴────┐
+    //                                  │unlocked│                           │locked│          │withdrawn│
+    //                                  └────────┘                           └──────┘          └─────────┘
 
     /// Burnable ERC-20 token held by this contract.
     ERC20Burnable public immutable token;
