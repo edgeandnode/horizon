@@ -59,8 +59,8 @@ contract Collateralization is Multicall {
     ERC20Burnable public immutable token;
     /// Mapping of deposit IDs to deposits.
     mapping(uint128 => DepositState) public deposits;
-    /// Counter for assigning new deposit IDs.
-    uint128 public lastID;
+    /// Counters for generating new deposit IDs.
+    mapping(address => uint64) public nonces;
 
     /// @param _token the burnable ERC-20 token held by this contract.
     constructor(ERC20Burnable _token) {
@@ -73,8 +73,9 @@ contract Collateralization is Multicall {
     /// @param _unlock Unlock timestamp of the new deposit, in seconds. Set to a nonzero value to lock deposit.
     /// @return id Unique ID associated with the new deposit.
     function deposit(address _arbiter, uint256 _amount, uint64 _unlock) external returns (uint128) {
-        lastID += 1;
-        deposits[lastID] = DepositState({
+        uint64 _nonce = nonces[msg.sender]++;
+        uint128 _id = uint128(bytes16(keccak256(abi.encode(msg.sender, _nonce))));
+        deposits[_id] = DepositState({
             depositor: msg.sender,
             arbiter: _arbiter,
             amount: _amount,
@@ -84,8 +85,8 @@ contract Collateralization is Multicall {
         });
         bool _transferSuccess = token.transferFrom(msg.sender, address(this), _amount);
         require(_transferSuccess, "transfer failed");
-        emit Deposit(lastID, msg.sender, _arbiter, _amount, _unlock);
-        return lastID;
+        emit Deposit(_id, msg.sender, _arbiter, _amount, _unlock);
+        return _id;
     }
 
     /// Lock the deposit associated with the given ID. This makes the deposit slashable until it is unlocked. This
@@ -144,5 +145,11 @@ contract Collateralization is Multicall {
     function isSlashable(uint128 _id) external view returns (bool) {
         DepositState memory _deposit = getDeposit(_id);
         return (block.timestamp < _deposit.unlock);
+    }
+
+    /// Return the next deposit ID for the given depositor address.
+    function nextID(address _depositor) external view returns (uint128) {
+        uint64 _nonce = nonces[_depositor] + 1;
+        return uint128(bytes16(keccak256(abi.encode(msg.sender, _nonce))));
     }
 }
