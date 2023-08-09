@@ -94,7 +94,7 @@ contract Collateralization is Multicall {
     /// @param _id ID of the associated deposit.
     /// @param _unlock Unlock timestamp of deposit, in seconds.
     function lock(uint128 _id, uint64 _unlock) external {
-        DepositState memory _deposit = getDeposit(_id);
+        DepositState memory _deposit = getDepositState(_id);
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
         require(_deposit.unlock == 0, "deposit locked");
@@ -107,7 +107,7 @@ contract Collateralization is Multicall {
     /// @param _id ID of the associated deposit.
     /// @param _amount Amount of remaining deposit tokens to burn.
     function slash(uint128 _id, uint256 _amount) external {
-        DepositState memory _deposit = getDeposit(_id);
+        DepositState memory _deposit = getDepositState(_id);
         require(msg.sender == _deposit.arbiter, "sender not arbiter");
         require(_deposit.end == 0, "deposit withdrawn");
         require(block.timestamp < _deposit.unlock, "deposit unlocked");
@@ -120,7 +120,7 @@ contract Collateralization is Multicall {
     /// Collect remaining tokens associated with a deposit.
     /// @param _id ID of the associated deposit.
     function withdraw(uint128 _id) external {
-        DepositState memory _deposit = getDeposit(_id);
+        DepositState memory _deposit = getDepositState(_id);
         require(_deposit.depositor == msg.sender, "sender not depositor");
         require(_deposit.end == 0, "deposit withdrawn");
         require(block.timestamp >= _deposit.unlock, "deposit locked");
@@ -132,7 +132,7 @@ contract Collateralization is Multicall {
 
     /// Return the deposit state associated with the given ID.
     /// @param _id ID of the associated deposit.
-    function getDeposit(uint128 _id) public view returns (DepositState memory) {
+    function getDepositState(uint128 _id) public view returns (DepositState memory) {
         DepositState memory _deposit = deposits[_id];
         require(_deposit.depositor != address(0), "deposit not found");
         return _deposit;
@@ -143,7 +143,7 @@ contract Collateralization is Multicall {
     /// withdrawn by the depositor until it is unlocked (`block.timestamp >= unlock`).
     /// @param _id ID of the associated deposit.
     function isSlashable(uint128 _id) external view returns (bool) {
-        DepositState memory _deposit = getDeposit(_id);
+        DepositState memory _deposit = getDepositState(_id);
         return (block.timestamp < _deposit.unlock);
     }
 

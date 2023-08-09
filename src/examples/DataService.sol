@@ -43,7 +43,7 @@ contract DataService is Ownable, IDataService {
     /// Called by data service provider to receive payment. This locks the given deposit to begin a dispute period.
     function remitPayment(address _providerAddr, uint128 _depositID, uint64 _unlock) public {
         ProviderState memory _provider = getProviderState(_providerAddr);
-        Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
+        Collateralization.DepositState memory _deposit = collateralization.getDepositState(_depositID);
 
         uint256 minCollateral = uint256(_provider.payment) * 10;
         require(_deposit.amount >= minCollateral, "collateral below minimum");

@@ -57,7 +57,7 @@ contract LoanAggregator {
     }
 
     function withdraw(uint128 _depositID) public {
-        Collateralization.DepositState memory _deposit = collateralization.getDeposit(_depositID);
+        Collateralization.DepositState memory _deposit = collateralization.getDepositState(_depositID);
         collateralization.withdraw(_depositID);
         // calculate original deposit amount
         uint256 _index = 0;

@@ -65,7 +65,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
     function slash(uint256 __sender, uint256 __id, uint256 __amount) public {
         uint128 _id = _genID(__id);
         vm.prank(_genActor(__sender));
-        collateralization.slash(_id, bound(__amount, 0, collateralization.getDeposit(_id).amount));
+        collateralization.slash(_id, bound(__amount, 0, collateralization.getDepositState(_id).amount));
         assert(collateralization.isSlashable(_id));
         _removeDepositID(_id);
     }
@@ -75,7 +75,7 @@ contract CollateralizationHandler is CommonBase, StdUtils {
         uint64 _index = 0;
         while (_index < depositIDs.length) {
             uint128 _id = depositIDs[_index];
-            Collateralization.DepositState memory _deposit = collateralization.getDeposit(_id);
+            Collateralization.DepositState memory _deposit = collateralization.getDepositState(_id);
             if (_deposit.depositor != address(0)) {
                 total += _deposit.amount;
             }
@@ -139,7 +139,7 @@ contract CollateralizationUnitTests is Test {
         uint128 _id = collateralization.deposit(address(0), 1, 0);
         assertEq(token.balanceOf(address(this)), _initialBalance - 1);
         assertEq(token.balanceOf(address(collateralization)), 1);
-        assertEq(collateralization.getDeposit(_id).depositor, address(this));
+        assertEq(collateralization.getDepositState(_id).depositor, address(this));
         assertEq(collateralization.isSlashable(_id), false);
     }
 
@@ -150,7 +150,7 @@ contract CollateralizationUnitTests is Test {
         uint128 _id = collateralization.deposit(address(0), 1, _unlock);
         assertEq(token.balanceOf(address(this)), _initialBalance - 1);
         assertEq(token.balanceOf(address(collateralization)), 1);
-        assertEq(collateralization.getDeposit(_id).depositor, address(this));
+        assertEq(collateralization.getDepositState(_id).depositor, address(this));
         assertEq(collateralization.isSlashable(_id), true);
     }
 
@@ -193,7 +193,7 @@ contract CollateralizationUnitTests is Test {
     }
 
     function testFail_getDepositNoDeposit() public view {
-        collateralization.getDeposit(0);
+        collateralization.getDepositState(0);
     }
 
     function test_Slash() public {
