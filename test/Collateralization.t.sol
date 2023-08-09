@@ -136,7 +136,9 @@ contract CollateralizationUnitTests is Test {
     function test_UnlockedDeposit() public {
         uint256 _initialBalance = token.balanceOf(address(this));
         token.approve(address(collateralization), 1);
+        uint128 _next_id = collateralization.nextID(address(this));
         uint128 _id = collateralization.deposit(address(0), 1, 0);
+        assertEq(_id, _next_id);
         assertEq(token.balanceOf(address(this)), _initialBalance - 1);
         assertEq(token.balanceOf(address(collateralization)), 1);
         assertEq(collateralization.getDepositState(_id).depositor, address(this));

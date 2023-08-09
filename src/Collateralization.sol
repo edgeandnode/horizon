@@ -74,7 +74,7 @@ contract Collateralization is Multicall {
     /// @return id Unique ID associated with the new deposit.
     function deposit(address _arbiter, uint256 _amount, uint64 _unlock) external returns (uint128) {
         uint64 _nonce = nonces[msg.sender]++;
-        uint128 _id = uint128(bytes16(keccak256(abi.encode(msg.sender, _nonce))));
+        uint128 _id = uint128(bytes16(keccak256(abi.encode(block.chainid, msg.sender, _nonce))));
         deposits[_id] = DepositState({
             depositor: msg.sender,
             arbiter: _arbiter,
@@ -149,7 +149,7 @@ contract Collateralization is Multicall {
 
     /// Return the next deposit ID for the given depositor address.
     function nextID(address _depositor) external view returns (uint128) {
-        uint64 _nonce = nonces[_depositor] + 1;
-        return uint128(bytes16(keccak256(abi.encode(msg.sender, _nonce))));
+        uint64 _nonce = nonces[_depositor];
+        return uint128(bytes16(keccak256(abi.encode(block.chainid, msg.sender, _nonce))));
     }
 }
