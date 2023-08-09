@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {Collateralization} from "../Collateralization.sol";
+import {HorizonCore} from "../HorizonCore.sol";
 
 interface IDataService {
     function remitPayment(address _provider, uint128 _deposit, uint64 _unlock) external;
@@ -23,11 +23,11 @@ struct AggregatedLoan {
 }
 
 contract LoanAggregator {
-    Collateralization public collateralization;
+    HorizonCore public core;
     mapping(uint128 => AggregatedLoan[]) public loans;
 
-    constructor(Collateralization _collateralization) {
-        collateralization = _collateralization;
+    constructor(HorizonCore _core) {
+        core = _core;
     }
 
     function remitPayment(IDataService _arbiter, uint64 _unlock, LoanCommitment[] calldata _loanCommitments)
@@ -40,13 +40,11 @@ contract LoanAggregator {
             LoanCommitment memory _commitment = _loanCommitments[_index];
             // TODO: verify signature of (lender, amount, arbiter, unlock)
             _amount += _commitment.loan.amount;
-            collateralization.token().transferFrom(
-                address(_commitment.loan.lender), address(this), _commitment.loan.amount
-            );
+            core.token().transferFrom(address(_commitment.loan.lender), address(this), _commitment.loan.amount);
             _index += 1;
         }
-        collateralization.token().approve(address(collateralization), _amount);
-        uint128 _deposit = collateralization.deposit(address(_arbiter), _amount, _unlock);
+        core.token().approve(address(core), _amount);
+        uint128 _deposit = core.deposit(address(_arbiter), _amount, _unlock);
         _index = 0;
         while (_index < _loanCommitments.length) {
             loans[_deposit].push(_loanCommitments[_index].loan);
@@ -57,8 +55,8 @@ contract LoanAggregator {
     }
 
     function withdraw(uint128 _depositID) public {
-        Collateralization.DepositState memory _deposit = collateralization.getDepositState(_depositID);
-        collateralization.withdraw(_depositID);
+        HorizonCore.DepositState memory _deposit = core.getDepositState(_depositID);
+        core.withdraw(_depositID);
         // calculate original deposit amount
         uint256 _index = 0;
         uint256 _initialAmount = 0;
@@ -71,7 +69,7 @@ contract LoanAggregator {
         while (_index < loans[_depositID].length) {
             AggregatedLoan memory _loan = loans[_depositID][_index];
             uint256 _lenderReturn = (_loan.amount * _deposit.amount) / _initialAmount;
-            collateralization.token().transfer(address(_loan.lender), _lenderReturn);
+            core.token().transfer(address(_loan.lender), _lenderReturn);
             _loan.lender.onCollateralWithraw(_lenderReturn, _loan.lenderData);
             _index += 1;
         }

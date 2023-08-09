@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
-import {Collateralization} from "../Collateralization.sol";
+import {HorizonCore} from "../HorizonCore.sol";
 import {IDataService} from "./LoanAggregator.sol";
 
 contract DataService is Ownable, IDataService {
@@ -11,12 +11,12 @@ contract DataService is Ownable, IDataService {
         uint128 payment;
     }
 
-    Collateralization public collateralization;
+    HorizonCore public core;
     mapping(address => ProviderState) public providers;
     uint64 public disputePeriod;
 
-    constructor(Collateralization _collateralization, uint64 _disputePeriod) {
-        collateralization = _collateralization;
+    constructor(HorizonCore _core, uint64 _disputePeriod) {
+        core = _core;
         disputePeriod = _disputePeriod;
     }
 
@@ -25,7 +25,7 @@ contract DataService is Ownable, IDataService {
         require(_payment > 0);
         require(providers[_provider].payment == 0, "provider exists");
         providers[_provider] = ProviderState({deposit: 0, payment: _payment});
-        collateralization.token().transferFrom(msg.sender, address(this), _payment);
+        core.token().transferFrom(msg.sender, address(this), _payment);
     }
 
     function removeProvider(address _provider) public onlyOwner {
@@ -37,13 +37,13 @@ contract DataService is Ownable, IDataService {
     /// Slash the provider's deposit.
     function slash(address _provider, uint256 _amount) public onlyOwner {
         ProviderState memory _state = getProviderState(_provider);
-        collateralization.slash(_state.deposit, _amount);
+        core.slash(_state.deposit, _amount);
     }
 
     /// Called by data service provider to receive payment. This locks the given deposit to begin a dispute period.
     function remitPayment(address _providerAddr, uint128 _depositID, uint64 _unlock) public {
         ProviderState memory _provider = getProviderState(_providerAddr);
-        Collateralization.DepositState memory _deposit = collateralization.getDepositState(_depositID);
+        HorizonCore.DepositState memory _deposit = core.getDepositState(_depositID);
 
         uint256 minCollateral = uint256(_provider.payment) * 10;
         require(_deposit.amount >= minCollateral, "collateral below minimum");
@@ -52,9 +52,9 @@ contract DataService is Ownable, IDataService {
 
         providers[_providerAddr].deposit = _depositID;
         if (_deposit.unlock == 0) {
-            collateralization.lock(_depositID, _unlock);
+            core.lock(_depositID, _unlock);
         }
-        collateralization.token().transfer(_providerAddr, _provider.payment);
+        core.token().transfer(_providerAddr, _provider.payment);
     }
 
     function getProviderState(address _provider) public view returns (ProviderState memory) {

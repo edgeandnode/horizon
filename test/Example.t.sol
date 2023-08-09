@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {ERC20Burnable} from "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Collateralization} from "../src/Collateralization.sol";
+import {HorizonCore} from "../src/HorizonCore.sol";
 import {DataService} from "../src/examples/DataService.sol";
 import {Lender, Limits} from "../src/examples/Lender.sol";
 import {
@@ -17,9 +17,9 @@ contract TestToken is ERC20Burnable {
     }
 }
 
-contract CollateralizationUnitTests is Test, ILender {
+contract HorizonCoreUnitTests is Test, ILender {
     TestToken public token;
-    Collateralization public collateralization;
+    HorizonCore public core;
     DataService public dataService;
     LoanAggregator public aggregator;
     Lender public lender;
@@ -28,9 +28,9 @@ contract CollateralizationUnitTests is Test, ILender {
 
     function setUp() public {
         token = new TestToken(1_000);
-        collateralization = new Collateralization(token);
-        aggregator = new LoanAggregator(collateralization);
-        dataService = new DataService(collateralization, 20 days);
+        core = new HorizonCore(token);
+        aggregator = new LoanAggregator(core);
+        dataService = new DataService(core, 20 days);
         lender = new Lender(aggregator, Limits({maxAmount: 100, maxDuration: 30 days}));
         token.transfer(address(lender), 80);
     }
@@ -43,7 +43,7 @@ contract CollateralizationUnitTests is Test, ILender {
         uint256 _initialBalance = token.balanceOf(address(this));
         uint256 _initialLenderBalance = token.balanceOf(address(lender));
 
-        // Data service requires 10x of payment (100 tokens) in collateralization deposit. Fund deposit with a 20 token
+        // Data service requires 10x of payment (100 tokens) in a HorizonCore deposit. Fund deposit with a 20 token
         // loan from self, and a 80 token loan from lender.
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
         token.approve(address(aggregator), 20);
@@ -74,7 +74,7 @@ contract CollateralizationUnitTests is Test, ILender {
         uint256 _initialBalance = token.balanceOf(address(this));
         uint256 _initialLenderBalance = token.balanceOf(address(lender));
 
-        // Data service requires 10x of payment (100 tokens) in collateralization deposit. Fund deposit with a 20 token
+        // Data service requires 10x of payment (100 tokens) in a HorizonCore deposit. Fund deposit with a 20 token
         // loan from self, and a 80 token loan from lender.
         LoanCommitment[] memory _loanCommitments = new LoanCommitment[](2);
         token.approve(address(aggregator), 20);

@@ -4,8 +4,8 @@ pragma solidity ^0.8.13;
 import "openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "openzeppelin-contracts/contracts/utils/Multicall.sol";
 
-/// This contract manages slashable, potentially time-locked token deposits.
-contract Collateralization is Multicall {
+/// This contract manages collateral in the form of slashable, potentially time-locked token deposits.
+contract HorizonCore is Multicall {
     event Deposit(
         uint128 indexed id, address indexed depositor, address indexed arbiter, uint256 amount, uint64 unlock
     );

@@ -27,7 +27,7 @@ contract Lender is Ownable, ILender {
     }
 
     function collect(uint256 _amount) public onlyOwner returns (bool) {
-        return agg.collateralization().token().transfer(owner(), _amount);
+        return agg.core().token().transfer(owner(), _amount);
     }
 
     function borrow(uint256 _amount, uint256 _collateral, uint256 _payment, uint64 _unlock)
@@ -40,11 +40,11 @@ contract Lender is Ownable, ILender {
         require(_amount <= limits.maxAmount, "amount over maximum");
         require(_payment >= expectedPayment(_amount, _duration), "payment below expected");
         uint256 _transferAmount = _collateral + _payment;
-        agg.collateralization().token().transferFrom(msg.sender, address(this), _transferAmount);
+        agg.core().token().transferFrom(msg.sender, address(this), _transferAmount);
 
         uint96 _loanIndex = uint96(loans.length);
         loans.push(LoanState({borrower: msg.sender, initialAmount: _amount, borrowerCollateral: _collateral}));
-        agg.collateralization().token().approve(address(agg), _amount);
+        agg.core().token().approve(address(agg), _amount);
         return LoanCommitment({
             loan: AggregatedLoan({lender: this, lenderData: _loanIndex, amount: _amount}),
             signature: "siggy"
@@ -68,7 +68,7 @@ contract Lender is Ownable, ILender {
         delete loans[_lenderData];
         uint256 _loss = _loan.initialAmount - _amount;
         if (_loss < _loan.borrowerCollateral) {
-            agg.collateralization().token().transfer(_loan.borrower, _loan.borrowerCollateral - _loss);
+            agg.core().token().transfer(_loan.borrower, _loan.borrowerCollateral - _loss);
         }
     }
 }
